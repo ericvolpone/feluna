@@ -43,7 +43,6 @@ const forest = {
     { type: 'spiral', x: -38, z: -34 },
   ],
   enemy: { blob: '#78c850', beetle: '#3f6b2c', count: 3, hp: 1 },
-  birds: ['Bluebird', 'Robin', 'Canary', 'Cardinal', 'Chickadee'],
 };
 
 const winter = {
@@ -84,7 +83,6 @@ const winter = {
     { type: 'spiral', x: -40, z: -32 },
   ],
   enemy: { blob: '#dfefff', beetle: '#4b6fa8', count: 4, hp: 1 },
-  birds: ['Chickadee', 'Cardinal', 'Bluebird'],
 };
 
 const desert = {
@@ -126,7 +124,6 @@ const desert = {
   ],
   extras: [{ type: 'oasis', x: 14, z: 10 }],
   enemy: { blob: '#e8b45a', beetle: '#8a4a2a', count: 4, hp: 2 },
-  birds: ['Canary', 'Robin', 'Cardinal'],
 };
 
 const city = {
@@ -168,7 +165,6 @@ const city = {
     { type: 'camp', x: -40, z: -30, style: 'park' },
   ],
   enemy: { blob: '#7a8a6a', beetle: '#3a3a4a', count: 4, hp: 2 },
-  birds: ['Pigeon', 'Robin', 'Chickadee'],
 };
 
 const lava = {
@@ -209,7 +205,6 @@ const lava = {
     { type: 'spiral', x: -40, z: -32, style: 'basalt' },
   ],
   enemy: { blob: '#ff7a2a', beetle: '#5a1a1a', count: 5, hp: 2 },
-  birds: ['Cardinal', 'Canary'],
   lava: true,
 };
 

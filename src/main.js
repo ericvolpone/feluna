@@ -108,6 +108,7 @@ renderer.setAnimationLoop(() => {
   last = now;
   input.poll();
   active.update(dt, busy);
+  document.body.classList.toggle('ingame', active === game);
   if (!innerWidth || !innerHeight) return; // hidden / zero-size window
   renderer.render(active.scene, active.camera);
 });

@@ -38,9 +38,10 @@ export class Hud {
     $('end').classList.add('hidden');
   }
 
-  setHearts(h, max) {
+  setHearts(h, max, shield = 0) {
     let html = '';
     for (let i = 0; i < max; i++) html += `<span class="${i < h ? 'full' : 'empty'}">♥</span>`;
+    if (shield) html += '<span class="shield" title="Shield">🛡</span>';
     const el = $('hud-hearts');
     if (el.dataset.h && +el.dataset.h > h) {
       el.classList.remove('shake');
@@ -51,10 +52,21 @@ export class Hud {
     el.innerHTML = html;
   }
 
-  setStats({ moon, moonTotal, tuna, tunaNeed, friends, perks }) {
+  setStats({ moon, moonTotal, tuna, tunaTotal, birds, birdsTotal, tier }) {
     $('hud-stones').innerHTML = `<span class="gem">◆</span> ${moon} / ${moonTotal}`;
-    $('hud-tuna').innerHTML = `<span class="fish">🐟</span><span class="bar"><i style="width:${(tuna / tunaNeed) * 100}%"></i></span>${tuna}/${tunaNeed}`;
-    $('hud-friends').innerHTML = `<span class="bird">🐦</span> ${friends}${perks.length ? ` <small>${perks.join(' · ')}</small>` : ''}`;
+    $('hud-tuna').innerHTML = `<span class="fish">🐟</span><span class="bar"><i style="width:${(tuna / tunaTotal) * 100}%"></i></span>${tuna}/${tunaTotal}`;
+    $('hud-friends').innerHTML = `<span class="bird">🐦</span> ${birds}/${birdsTotal}${tier ? ` <small>${tier}</small>` : ''}`;
+    $('hud-stones').classList.toggle('done', moon === moonTotal);
+    $('hud-tuna').classList.toggle('done', tuna === tunaTotal);
+    $('hud-friends').classList.toggle('done', birds === birdsTotal);
+  }
+
+  /** Pause-menu list of your bird friends and what they do. */
+  setFlock(friends, roles, tierName) {
+    const kinds = Object.keys(friends);
+    $('pause-flock').innerHTML = kinds.length
+      ? `<h3>Your flock${tierName ? ` · ${tierName}` : ''}</h3>` + kinds.map((k) => `<div><b>${k}</b> ${roles[k].role} Lv ${friends[k]}<small>${roles[k].desc}</small></div>`).join('')
+      : '<h3>Your flock</h3><small>Walk up to birds calmly and meow to befriend them. Befriend all 5 in a level for an extra jump.</small>';
   }
 
   setDevice(device) {

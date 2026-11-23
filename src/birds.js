@@ -12,7 +12,6 @@ const SPECIES = [
 const BIRD_SCALE = 1.7;
 const FRIEND_SIZE = 0.42;
 export const TRUST_NEEDED = 3;
-const COUNT = 16;
 
 function buildBird(sp, mat, darkMat) {
   const P = {};
@@ -57,33 +56,53 @@ function buildBird(sp, mat, darkMat) {
   return { root, body, head, wings };
 }
 
+/** What each kind of bird friend does for you. */
+export const ROLES = {
+  Cardinal: { role: 'Fighter', desc: 'Swoops at guards near you' },
+  Canary: { role: 'Fetcher', desc: 'Fetches nearby tuna and hearts' },
+  Bluebird: { role: 'Scout', desc: 'Points the way to the nearest moonstone' },
+  Robin: { role: 'Healer', desc: 'Brings you a heart now and then' },
+  Chickadee: { role: 'Guardian', desc: 'Puffs up a shield that blocks a hit' },
+};
+export const FLOCK_KINDS = Object.keys(ROLES);
+
+/** Befriend a whole level's flock to unlock the next tier. */
+export const FLOCK_TIERS = [
+  { name: '', airJumps: 0, glide: false },
+  { name: 'Double Jump', airJumps: 1, glide: false, toast: 'Double Jump! Press jump again in mid-air' },
+  { name: 'Triple Jump', airJumps: 2, glide: false, toast: 'Triple Jump! Two extra jumps in mid-air' },
+  { name: 'Glide', airJumps: 2, glide: true, toast: 'Glide! Hold jump while falling' },
+  { name: 'Quadruple Jump', airJumps: 3, glide: true, toast: 'Quadruple Jump!' },
+  { name: 'Five Jumps', airJumps: 4, glide: true, toast: 'Five Jumps! You basically fly now' },
+];
+
 /**
- * Songbirds that hop around, peck, and fly between perches.
- * Approach calmly and meow near one to build trust; at full trust it becomes
- * a friend that follows you (and gives you a heart).
- * Sprinting or swiping nearby startles un-befriended birds.
+ * Songbirds. Each level has one wild bird of each kind; they hop around, peck and
+ * fly between perches. Approach calmly and meow to build trust. A befriended bird
+ * follows you and does its job (see ROLES); befriending a kind you already have
+ * levels that friend up instead and the newcomer flies off to join the flock.
  */
 export class Birds {
   /**
-   * @param {string[]} speciesNames  which birds live in this level
-   * @param {string[]} friendNames   friends carried over from earlier levels
+   * @param {Object<string, number>} friends  kind -> level, carried over from earlier levels
    */
-  constructor(scene, world, speciesNames, friendNames = []) {
+  constructor(scene, world, friends = {}) {
     this.world = world;
     this.scene = scene;
-    this.rand = mulberry32(77);
+    this.rand = mulberry32(77 + world.level.id.length);
     this.mat = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.8 });
     this.darkMat = new THREE.MeshStandardMaterial({ color: '#111', roughness: 0.3 });
     this.list = [];
-    const perches = [...world.perches];
-    for (let i = 0; i < COUNT && perches.length; i++) {
-      const idx = Math.floor(this.rand() * perches.length);
-      const perch = perches.splice(idx, 1)[0];
-      const sp = SPECIES.find((x) => x.name === speciesNames[i % speciesNames.length]) ?? SPECIES[0];
-      this.spawnBird(sp, perch);
+    // wild birds: one of each kind, spread across the map
+    const perches = world.perches.filter((p) => Math.hypot(p.x, p.z) > 12);
+    for (const kind of FLOCK_KINDS) {
+      const perch = perches.splice(Math.floor(this.rand() * perches.length), 1)[0] ?? world.spawn.clone();
+      const b = this.spawnBird(kind, perch);
+      b.wild = true;
     }
-    for (const name of friendNames) {
-      const b = this.spawnBird(SPECIES.find((x) => x.name === name) ?? SPECIES[0], world.spawn.clone().add(new THREE.Vector3((this.rand() - 0.5) * 3, 2, 2)));
+    // friends from earlier levels arrive with you
+    for (const kind of Object.keys(friends)) {
+      const b = this.spawnBird(kind, world.spawn.clone().add(new THREE.Vector3((this.rand() - 0.5) * 3, 2, 2)));
       b.friend = true;
       b.trust = TRUST_NEEDED;
       b.state = 'follow';
@@ -91,23 +110,34 @@ export class Birds {
     }
   }
 
-  spawnBird(sp, perch) {
-      const model = buildBird(sp, this.mat, this.darkMat);
-      this.scene.add(model.root);
-      const b = {
-        sp, ...model,
-        pos: perch.clone(), from: new THREE.Vector3(), to: new THREE.Vector3(),
-        state: 'perch', friend: false, trust: 0, yaw: this.rand() * 6,
-        u: 0, dur: 1, arc: 1, hopY: 0, hopV: 0, hopT: this.rand() * 2, peckT: 0,
-        leaveT: 8 + this.rand() * 14, meowCd: 0, fold: 1, t: this.rand() * 10,
-        pitch: 0.85 + this.rand() * 0.4, size: 1,
-      };
-      this.list.push(b);
-      return b;
+  spawnBird(kind, perch) {
+    const sp = SPECIES.find((x) => x.name === kind) ?? SPECIES[0];
+    const model = buildBird(sp, this.mat, this.darkMat);
+    this.scene.add(model.root);
+    const b = {
+      sp, kind, ...model,
+      pos: perch.clone(), from: new THREE.Vector3(), to: new THREE.Vector3(),
+      state: 'perch', friend: false, wild: false, trust: 0, yaw: this.rand() * 6,
+      u: 0, dur: 1, arc: 1, hopY: 0, hopV: 0, hopT: this.rand() * 2, peckT: 0,
+      leaveT: 8 + this.rand() * 14, meowCd: 0, fold: 1, t: this.rand() * 10,
+      pitch: 0.85 + this.rand() * 0.4, size: 1, task: null, gone: false,
+    };
+    this.list.push(b);
+    return b;
   }
 
   get friends() {
-    return this.list.filter((b) => b.friend);
+    return this.list.filter((b) => b.friend && !b.gone && b.state !== 'leave');
+  }
+
+  /** The following friend of a kind, if any. */
+  follower(kind) {
+    return this.friends.find((b) => b.kind === kind);
+  }
+
+  /** Wild birds of this level that are still to be befriended. */
+  get remainingWild() {
+    return this.list.filter((b) => b.wild && !b.friend);
   }
 
   flyTo(b, target, after) {
@@ -120,6 +150,20 @@ export class Birds {
     b.dur = 0.5 + d / 7;
     b.arc = 0.8 + d * 0.18;
     b.hopY = 0;
+  }
+
+  /**
+   * Send a friend on an errand: fly to target() (re-evaluated each frame), call
+   * arrive(), optionally hover, then fly back and call done().
+   */
+  sendOnTask(b, { target, arrive, done, hover = 0, carry = null }) {
+    b.task = { target, arrive, done, hover, carry, phase: 'go', t: 0 };
+    b.state = 'task';
+    b.hopY = 0;
+  }
+
+  busy(b) {
+    return !b || b.state === 'task' || b.state === 'leave';
   }
 
   randomPerch(b, minD, maxD) {
@@ -144,13 +188,13 @@ export class Birds {
     return best;
   }
 
-  /** Player meowed. Returns the birds that became friends. */
+  /** Player meowed. Returns the birds that reached full trust this meow. */
   meow(pos, particles, sfx) {
     const befriended = [];
     for (const b of this.list) {
       const d = b.pos.distanceTo(pos);
       if (b.friend) {
-        if (d < 6) {
+        if (d < 6 && !this.busy(b)) {
           b.hopV = 2.2;
           particles.spawn('note', b.pos.clone().setY(b.pos.y + b.hopY + 0.6), { vel: new THREE.Vector3(0, 0.8, 0), size: 0.28, life: 0.9 });
         }
@@ -165,8 +209,6 @@ export class Birds {
       sfx.chirp(b.pitch);
       const head = b.pos.clone().setY(b.pos.y + 0.7);
       if (b.trust >= TRUST_NEEDED) {
-        b.friend = true;
-        b.state = 'follow';
         particles.burst('heart', head, 7, { size: 0.32, speed: 1.6, up: 2.2, life: 1.3 });
         befriended.push(b);
       } else {
@@ -174,6 +216,19 @@ export class Birds {
       }
     }
     return befriended;
+  }
+
+  /** Make b a follower, or (if that kind already follows you) send it off to join the flock. */
+  befriend(b) {
+    const existing = this.follower(b.kind);
+    b.friend = true;
+    if (existing) {
+      b.state = 'leave';
+      b.leaveT = 0;
+      return 'levelup';
+    }
+    b.state = 'follow';
+    return 'new';
   }
 
   /** Something loud happened near pos — shy birds flee. */
@@ -189,13 +244,19 @@ export class Birds {
     }
   }
 
-  update(dt, player, idleTime, particles) {
+  update(dt, player, idleTime) {
     const friends = this.friends;
     const n = friends.length;
     const g = this.world.groundHeight;
     const p = player.pos;
+    const slot = (b) => {
+      const k = Math.max(0, friends.indexOf(b));
+      const a = player.facing + Math.PI + (k - (n - 1) / 2) * 0.75;
+      return new THREE.Vector3(p.x + Math.sin(a) * 1.1, p.y + 1.25 + Math.sin(b.t * 2 + k) * 0.15, p.z + Math.cos(a) * 1.1);
+    };
 
     for (const b of this.list) {
+      if (b.gone) continue;
       b.t += dt;
       b.meowCd -= dt;
       let flap = 0;
@@ -214,20 +275,62 @@ export class Birds {
           b.state = b.after;
           b.leaveT = 8 + this.rand() * 14;
         }
+      } else if (b.state === 'task') {
+        flying = true;
+        flap = 1;
+        const tk = b.task;
+        const target = tk.phase === 'back' ? slot(b) : tk.target();
+        if (!target) {
+          tk.phase = 'back';
+        } else {
+          const dx = target.x - b.pos.x, dy = target.y - b.pos.y, dz = target.z - b.pos.z;
+          const d = Math.hypot(dx, dy, dz);
+          const step = Math.min(d, 11 * dt);
+          if (d > 1e-4) {
+            b.pos.x += (dx / d) * step;
+            b.pos.y += (dy / d) * step;
+            b.pos.z += (dz / d) * step;
+            if (Math.hypot(dx, dz) > 0.05) b.yaw = dampAngle(b.yaw, Math.atan2(dx, dz), 10, dt);
+          }
+          if (tk.phase === 'go' && d < 0.45) {
+            tk.arrive?.(b);
+            tk.phase = tk.hover > 0 ? 'hover' : 'back';
+          } else if (tk.phase === 'hover') {
+            tk.t += dt;
+            if (tk.t > tk.hover) tk.phase = 'back';
+          } else if (tk.phase === 'back' && d < 0.8) {
+            tk.done?.(b);
+            b.task = null;
+            b.state = 'follow';
+          }
+        }
+        if (tk.carry) tk.carry.position.set(b.pos.x, b.pos.y - 0.25, b.pos.z);
+      } else if (b.state === 'leave') {
+        // happy loop up into the sky, then gone
+        flying = true;
+        flap = 1;
+        b.leaveT += dt;
+        b.pos.y += dt * 4;
+        b.pos.x += Math.sin(b.leaveT * 3) * dt * 3;
+        b.pos.z += Math.cos(b.leaveT * 3) * dt * 3;
+        b.yaw += dt * 3;
+        if (b.leaveT > 3) {
+          b.gone = true;
+          b.root.visible = false;
+          continue;
+        }
       } else if (b.state === 'follow') {
         flying = true;
-        const k = friends.indexOf(b);
-        const a = player.facing + Math.PI + (k - (n - 1) / 2) * 0.75;
-        const tx = p.x + Math.sin(a) * 1.1, tz = p.z + Math.cos(a) * 1.1;
-        const ty = p.y + 1.25 + Math.sin(b.t * 2 + k) * 0.15;
+        const tg = slot(b);
         const ox = b.pos.x, oz = b.pos.z;
-        b.pos.x = damp(b.pos.x, tx, 3.5, dt);
-        b.pos.z = damp(b.pos.z, tz, 3.5, dt);
-        b.pos.y = damp(b.pos.y, ty, 3, dt);
+        b.pos.x = damp(b.pos.x, tg.x, 3.5, dt);
+        b.pos.z = damp(b.pos.z, tg.z, 3.5, dt);
+        b.pos.y = damp(b.pos.y, tg.y, 3, dt);
         const mv = Math.hypot(b.pos.x - ox, b.pos.z - oz);
         b.yaw = dampAngle(b.yaw, mv > 0.01 ? Math.atan2(b.pos.x - ox, b.pos.z - oz) : player.facing, 6, dt);
         flap = 0.7;
         if (idleTime > 2.5 && player.grounded && !player.climb) {
+          const k = friends.indexOf(b);
           const la = player.facing + Math.PI * 0.5 + k * ((Math.PI * 2) / Math.max(n, 1));
           const land = new THREE.Vector3(p.x + Math.sin(la) * 0.9, p.y, p.z + Math.cos(la) * 0.9);
           if (Math.abs(g(land.x, land.z) - p.y) < 0.5) land.y = g(land.x, land.z);

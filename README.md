@@ -24,29 +24,33 @@ Alley City → Ember Crater**.
   Find all 5 to open the **Moon Gate** straight ahead of the spawn, then walk
   through it to reach the next level.
 - **Guarded camps (2 per level):** their moonstone is caged. Defeat the guards
-  (claw them, or jump on them) to open the cage and pick a powerup.
+  (claw them, or jump on them) to open the cage. Clearing every guard in a level
+  earns a powerup.
 - **Hearts:** you start with 3. Enemies and lava take one each. Defeated enemies
   sometimes drop a heart. Out of hearts ends the run.
-- **Tuna cans (20 per level):** every 10 gives you a powerup choice.
+- **Tuna cans (20 per level):** find them all for a powerup.
 - **Powerups:** Swift Paws (+speed), Spring Legs (+jump), Extra Heart (+1 max).
 - **Climbing:** swipe next to a trunk, lamp post or drainpipe to latch on, hold
   claws to climb, jump to leap off.
-- **Birds:** walk up calmly and meow 3 times to make a friend. Friends shrink,
-  follow you, and carry over between levels. 1 friend = Flutter (mid-air jump),
-  3 = Glide (hold jump while falling), 5 = Double Flutter.
+- **Minimap:** shows the gate, moonstones, remaining tuna, wild birds and
+  guarded camps, so you can tell when a level is 100% complete.
 
-## Controls
+### Birds
 
-| Action | Controller | Keyboard / Mouse |
-| --- | --- | --- |
-| Move | Left stick / D-pad | WASD / Arrows |
-| Look | Right stick | Mouse (click canvas to capture) |
-| Jump (hold for higher) | A | Space |
-| Sprint | LT / LB (hold) or L3 (toggle) | Shift |
-| Claws (swipe / climb) | RT / RB | E / Left click |
-| Meow | X | F |
-| Pause | Start | Esc / P |
-| Menu select / back | A / B | Enter / Esc |
+Each level has 5 wild birds, one of each kind. Walk up calmly and meow 3 times
+to befriend one. Each friend has a job and follows you between levels:
+
+| Bird | Job |
+| --- | --- |
+| Cardinal | Fighter: swoops at guards near you |
+| Canary | Fetcher: brings you nearby tuna and hearts |
+| Bluebird | Scout: flies toward the nearest moonstone, leaving a sparkle trail |
+| Robin | Healer: brings you a heart now and then |
+| Chickadee | Guardian: puffs up a shield that blocks one hit |
+
+Befriending a kind you already have levels that friend up instead. Befriend
+all 5 birds in a level to unlock the next jump tier: Double Jump → Triple Jump
+→ Glide → Quadruple Jump → Five Jumps.
 
 ### Phones and tablets
 
