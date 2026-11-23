@@ -2,6 +2,9 @@
 // HUD stays in the DOM for crisp text at any resolution.
 const $ = (id) => document.getElementById(id);
 
+/** Up to three stars; levels past that show as a silver then gold border instead. */
+const stars = (lv) => `<span class="stars">${'★'.repeat(Math.min(3, lv))}${'☆'.repeat(Math.max(0, 3 - lv))}</span>`;
+
 const HINTS = {
   keyboard: [['WASD', 'Move'], ['Mouse', 'Look'], ['Space', 'Jump'], ['Shift', 'Sprint'], ['E / Click', 'Claws'], ['F', 'Meow'], ['Esc', 'Pause']],
   gamepad: [['L-Stick', 'Move'], ['R-Stick', 'Look'], ['A', 'Jump'], ['LT', 'Sprint'], ['RT', 'Claws'], ['X', 'Meow'], ['Start', 'Pause']],
@@ -20,6 +23,12 @@ export class Hud {
     this.pause = $('pause');
     this.device = 'keyboard';
     this.context = null;
+  }
+
+  /** Hero-specific name for the attack button in the hints. */
+  setAttackName(name) {
+    this.attackName = name;
+    this.setDevice(this.device);
   }
 
   show(hero, levelName) {
@@ -61,17 +70,45 @@ export class Hud {
     $('hud-friends').classList.toggle('done', birds === birdsTotal);
   }
 
-  /** Pause-menu list of your bird friends and what they do. */
+  /** Pause-menu list of your bird friends, what they do now and at the next level. */
   setFlock(friends, roles, tierName) {
     const kinds = Object.keys(friends);
     $('pause-flock').innerHTML = kinds.length
-      ? `<h3>Your flock${tierName ? ` · ${tierName}` : ''}</h3>` + kinds.map((k) => `<div><b>${k}</b> ${roles[k].role} Lv ${friends[k]}<small>${roles[k].desc}</small></div>`).join('')
+      ? `<h3>Your flock${tierName ? ` · ${tierName}` : ''}</h3>` + kinds.map((k) => {
+        const lv = friends[k], R = roles[k];
+        return `<div><span class="fb-dot" style="--c:${R.color}"></span><b>${k}</b> ${R.role} ${stars(lv)}
+          <small>${R.stat(lv)}</small><small class="next">Next level: ${R.stat(lv + 1)}</small></div>`;
+      }).join('') + '<small class="foot">Befriend the same kind of bird again in a later level to level it up.</small>'
       : '<h3>Your flock</h3><small>Walk up to birds calmly and meow to befriend them. Befriend all 5 in a level for an extra jump.</small>';
+  }
+
+  /** Small HUD row: one pip per bird friend with its level stars. */
+  setFlockBar(friends, roles) {
+    $('hud-flock').innerHTML = Object.keys(friends).map((k) => {
+      const lv = friends[k];
+      return `<span class="fb ${lv >= 5 ? 'gold' : lv >= 4 ? 'silver' : ''}" title="${k} · ${roles[k].role} Lv ${lv}: ${roles[k].stat(lv)}">
+        <span class="fb-dot" style="--c:${roles[k].color}"></span><span class="fb-role">${roles[k].role}</span>${stars(lv)}</span>`;
+    }).join('');
+  }
+
+  /** Boss health bar; pass name=null to hide. */
+  setBoss(name, frac) {
+    const el = $('boss-bar');
+    if (!name) {
+      if (!el.classList.contains('hidden')) el.classList.add('hidden');
+      return;
+    }
+    el.classList.remove('hidden');
+    if (el.dataset.name !== name) {
+      el.dataset.name = name;
+      $('boss-name').textContent = name;
+    }
+    $('boss-fill').style.width = `${frac * 100}%`;
   }
 
   setDevice(device) {
     this.device = device;
-    $('hud-hint').innerHTML = HINTS[device].map(([k, v]) => `<span>${this.key(k)}${v}</span>`).join('');
+    $('hud-hint').innerHTML = HINTS[device].map(([k, v]) => `<span>${this.key(k)}${v === 'Claws' && this.attackName ? `${this.attackName} / Climb` : v}</span>`).join('');
     $('pause-hint').textContent = device === 'gamepad' ? 'D-pad to choose · A select · B resume' : device === 'touch' ? '' : '↑↓ to choose · Enter select · Esc resume';
     this.setContext(this.context);
   }
@@ -140,13 +177,13 @@ export class Hud {
     $('end-title').textContent = kind === 'victory' ? 'The moon shines again!' : 'Out of hearts!';
     $('end-sub').textContent = kind === 'victory'
       ? `You crossed all ${st.level} lands. What a cat.`
-      : `You reached level ${st.level}: ${st.levelName}`;
+      : `You reached level ${st.level}: ${st.levelName}. Retrying keeps the upgrades you had when you got there.`;
     $('end-stats').innerHTML = `
       <div><b>◆ ${st.moon}</b>moonstones</div>
       <div><b>🐟 ${st.tuna}</b>tuna</div>
       <div><b>🐦 ${st.friends}</b>friends</div>
       <div><b>⏱ ${st.time}</b>time</div>`;
-    el.querySelectorAll('button')[0].textContent = kind === 'victory' ? 'Play Again' : 'Try Again';
+    el.querySelectorAll('button')[0].textContent = kind === 'victory' ? 'Play Again' : `Retry Level ${st.level}`;
     this.selectEnd(sel);
     el.classList.remove('hidden');
   }

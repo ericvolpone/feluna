@@ -24,6 +24,8 @@ function rawHeight(type, x, z) {
       return s(x * 0.04 + 0.5) * c(z * 0.045) * 3.2 + s(x * 0.1 + 1.3) * s(z * 0.085 + 0.7) * 1.0 + s((x + z) * 0.03) * 2.0;
     case 'dunes':
       return s(x * 0.07 + s(z * 0.04) * 2.2) * 1.6 + s(z * 0.05 + x * 0.015) * 1.3 + s((x + z) * 0.11) * 0.3;
+    case 'marsh':
+      return s(x * 0.05 + 0.3) * c(z * 0.045) * 0.9 + s((x + z) * 0.03) * 0.6;
     case 'rocky':
       return s(x * 0.05) * c(z * 0.06) * 2 + Math.abs(s(x * 0.17 + 1) * s(z * 0.15)) * 0.9 - 0.4;
     default:
@@ -31,13 +33,29 @@ function rawHeight(type, x, z) {
   }
 }
 
-function makeGround(level, pools) {
+const VOID_Y = -45;
+
+/** Floating islands: flat-ish tops that fall away into a bottomless cloud sea. */
+function islandHeight(islands, x, z) {
+  let best = VOID_Y;
+  for (const isl of islands) {
+    const d = Math.hypot(x - isl.x, z - isl.z);
+    if (d > isl.r + 6) continue;
+    const h = d <= isl.r
+      ? isl.h + Math.sin(x * 0.3 + isl.x) * Math.cos(z * 0.27) * 0.15 * smoothstep(isl.r, isl.r * 0.5, d)
+      : isl.h - ((d - isl.r) / 6) ** 2 * (isl.h - VOID_Y);
+    best = Math.max(best, h);
+  }
+  return best;
+}
+
+function makeGround(level, pools, islands) {
   const R = WORLD_R, type = level.terrain;
   const flats = [];
-  const edgeH = type === 'flat' ? 0 : 20;
+  const edgeH = type === 'flat' || level.void ? 0 : 20;
   const f = (x, z) => {
     const d = Math.hypot(x, z);
-    let h = rawHeight(type, x, z) * smoothstep(8, 24, d);
+    let h = level.void ? islandHeight(islands, x, z) : rawHeight(type, x, z) * smoothstep(8, 24, d);
     for (const fl of flats) {
       const dd = Math.hypot(x - fl.x, z - fl.z);
       if (dd < fl.r + 8) h = lerp(fl.h, h, smoothstep(fl.r, fl.r + 8, dd));
@@ -50,9 +68,10 @@ function makeGround(level, pools) {
     return h + e * e * edgeH;
   };
   f.addFlat = (x, z, r) => flats.push({ x, z, r, h: f(x, z) });
-  f.addPool = (x, z, r, depth) => {
+  f.addPool = (x, z, r, depth, kind = 'lava') => {
     const floor = f(x, z) - depth;
-    const p = { x, z, r, floor, lavaY: floor + 0.3 };
+    // lavaY is the surface height for either kind of pool
+    const p = { x, z, r, floor, kind, lavaY: floor + (kind === 'water' ? 1.0 : 0.3) };
     pools.push(p);
     return p;
   };
@@ -144,7 +163,16 @@ export function buildWorld(level, seed = 1, { lite = false } = {}) {
   const batch = new Batcher();
   const circles = [], boxes = [], perches = [], moonSpots = [], tunaSpots = [], glowSpots = [], camps = [], pools = [];
   const keep = [], placed = [];
-  const g = makeGround(level, pools);
+  const VOID = !!level.void;
+  const islands = [];
+  if (VOID) {
+    islands.push({ x: 0, z: 0, r: 14, h: 0, spawn: true });
+    islands.push({ x: level.gate.x, z: level.gate.z, r: 9, h: level.gate.h ?? 3 });
+    for (const P of level.pois) islands.push({ x: P.x, z: P.z, r: P.island ?? 12, h: P.h ?? 0, poi: P });
+  }
+  const g = makeGround(level, pools, islands);
+  /** On void levels, is there ground under this spot (and a little around it)? */
+  const solid = (x, z, r = 0) => !VOID || [[0, 0], [r, 0], [-r, 0], [0, r], [0, -r]].every(([ox, oz]) => g(x + ox, z + oz) > -2.5);
 
   const add = (geo, color, layer = 'solid') =>
     batch.add(paint(geo, typeof color === 'function' ? color : () => color), layer);
@@ -152,7 +180,8 @@ export function buildWorld(level, seed = 1, { lite = false } = {}) {
     Math.hypot(x, z) < R - 2
     && keep.every((k) => Math.hypot(x - k.x, z - k.z) > k.r + r)
     && placed.every((k) => Math.hypot(x - k.x, z - k.z) > k.r + r)
-    && pools.every((p) => Math.hypot(x - p.x, z - p.z) > p.r + 2.5 + r);
+    && pools.every((p) => Math.hypot(x - p.x, z - p.z) > p.r + 2.5 + r)
+    && solid(x, z, r + 0.5);
 
   // ── Trails from spawn to every POI and the gate ──
   const targets = [...level.pois, level.gate];
@@ -174,21 +203,36 @@ export function buildWorld(level, seed = 1, { lite = false } = {}) {
     return m;
   };
 
+  // extra little islands to explore, kept off the trails so they never block a bridge
+  if (VOID) {
+    for (let i = 0, tries = 0; i < (level.extraIslands ?? 0) && tries < 600; tries++) {
+      const a = rand() * Math.PI * 2, d = 18 + rand() * (R - 26), r = 5 + rand() * 3;
+      const x = Math.cos(a) * d, z = Math.sin(a) * d;
+      if (islands.some((o) => Math.hypot(o.x - x, o.z - z) < o.r + r + 7) || pathDist(x, z) < r + 7) continue;
+      islands.push({ x, z, r, h: -1 + rand() * 6 });
+      i++;
+    }
+  }
+
   // ── Flatten POI sites, dig lava pools ──
-  const FLAT_R = { camp: 11, cave: 9, tower: 6, pyramid: 13, rooftops: 13, spiral: 4, isles: 6, oasis: 9 };
+  const FLAT_R = { camp: 11, cave: 9, tower: 6, pyramid: 13, rooftops: 13, spiral: 4, isles: 6, oasis: 9, boss: 16 };
   g.addFlat(level.gate.x, level.gate.z, 7);
   for (const P of [...level.pois, ...(level.extras ?? [])]) {
     if (FLAT_R[P.type]) g.addFlat(P.x, P.z, FLAT_R[P.type]);
     keep.push({ x: P.x, z: P.z, r: (FLAT_R[P.type] ?? 10) + 4 });
   }
   keep.push({ x: level.gate.x, z: level.gate.z, r: 9 }, { x: 0, z: 0, r: 11 });
-  if (level.lava) {
-    for (const P of level.pois) if (P.type === 'lavacross') P.pool = g.addPool(P.x, P.z, 10, 1.4);
+  const poolKind = level.lava ? 'lava' : level.water ? 'water' : null;
+  if (poolKind) {
+    for (const P of level.pois) {
+      if (P.type === 'lavacross') P.pool = g.addPool(P.x, P.z, 10, 1.4, 'lava');
+      if (P.type === 'lilycross') P.pool = g.addPool(P.x, P.z, 11, 1.6, 'water');
+    }
     for (let i = 0, tries = 0; i < F.pools && tries < 400; tries++) {
       const a = rand() * Math.PI * 2, r = 16 + rand() * (R - 22);
       const x = Math.cos(a) * r, z = Math.sin(a) * r, pr = 3 + rand() * 3.5;
       if (!isFree(x, z, pr) || pathDist(x, z) < pr + 2.5) continue;
-      g.addPool(x, z, pr, 1.0);
+      g.addPool(x, z, pr, poolKind === 'water' ? 1.5 : 1.0, poolKind);
       i++;
     }
   }
@@ -211,7 +255,8 @@ export function buildWorld(level, seed = 1, { lite = false } = {}) {
       const r = cityRoad(p.x, p.z);
       return r === 'road' ? pick(T.path, n) : r === 'walk' ? C('#b8b4ac') : pick(T.ground, n);
     }
-    for (const pl of pools) if (Math.hypot(p.x - pl.x, p.z - pl.z) < pl.r + 1.2) return C('#1e1414');
+    if (VOID && p.y < -4) return p.y < -20 ? pick(T.cloud ?? [C('#ffffff')], n) : pick(T.rock, n);
+    for (const pl of pools) if (Math.hypot(p.x - pl.x, p.z - pl.z) < pl.r + 1.2) return pl.kind === 'water' ? C('#4a5a36') : C('#1e1414');
     if (d < 7 || pathDist(p.x, p.z) < 1.5) return pick(T.path, n);
     if (n > 0.9) return pick(T.litter, hash(p.z));
     return pick(T.ground, n);
@@ -301,7 +346,7 @@ export function buildWorld(level, seed = 1, { lite = false } = {}) {
       trunkH = 3.2 * s;
       const col = kind === 'dead' ? pick(T.bark, rand()) : pick(T.bark, rand());
       add(new THREE.CylinderGeometry(0.16 * s, 0.3 * s, trunkH + 0.5, 6, 3).translate(x, gy + trunkH / 2 - 0.25, z), col, layer);
-      branches(x, z, gy + trunkH, s, col, kind === 'dead' ? C('#ff7a2a') : snow);
+      branches(x, z, gy + trunkH, s, col, kind === 'dead' ? C('#ff7a2a') : level.id === 'winter' ? snow : null);
       top = gy + trunkH - 0.6;
     } else if (kind === 'cactus') {
       trunkH = (2.4 + rand()) * s;
@@ -405,6 +450,14 @@ export function buildWorld(level, seed = 1, { lite = false } = {}) {
     if (rand() < 0.4) perches.push(new THREE.Vector3(x, y, z));
   };
 
+  const lilyCols = [C('#5fae4a'), C('#6cbc55'), C('#529a40')];
+  const lily = (x, z, y, r) => {
+    add(new THREE.CylinderGeometry(r, r, 0.12, 12, 1, false, 0.35, Math.PI * 2 - 0.7).translate(x, y - 0.06, z),
+      (p) => (p.y > y - 0.01 ? pick(lilyCols, hash(p.x * 4 + p.z)) : C('#3f7a30')));
+    if (rand() < 0.3) add(new THREE.IcosahedronGeometry(0.14, 0).translate(x + r * 0.3, y + 0.1, z), C('#ff9ac8'), 'decor');
+    circles.push({ x, z, r: r * 0.95, y0: y - 0.8, y1: y });
+  };
+
   /** Hexagonal column from a lava floor (or ground) up to `top`. */
   const pillar = (x, z, r, top, floor) => {
     add(new THREE.CylinderGeometry(r, r * 1.08, top - floor + 1, 6).translate(x, (top + floor - 1) / 2, z),
@@ -473,7 +526,7 @@ export function buildWorld(level, seed = 1, { lite = false } = {}) {
   };
 
   const addCamp = (x, z, y, r, count) => {
-    const camp = { x, z, y, r, spawns: [], cage: null, moon: -1, cleared: false };
+    const camp = { x, z, y, r, cx: x, cz: z, spawns: [], cage: null, moon: -1, cleared: false };
     for (let i = 0; i < count; i++) {
       const a = (i / count) * Math.PI * 2 + rand() * 0.5, rr = r * (0.45 + rand() * 0.35);
       camp.spawns.push({ type: i % 2 === 0 || i === count - 1 && rand() < 0.5 ? 'blob' : 'beetle', x: x + Math.cos(a) * rr, z: z + Math.sin(a) * rr });
@@ -539,22 +592,27 @@ export function buildWorld(level, seed = 1, { lite = false } = {}) {
         return pick(T.stone, hash(Math.floor((p.y - gy) * 2) + Math.floor(p.x + p.z)));
       };
       solidBox(P.x, P.z, half * 2, half * 2, H, gy - 0.5, colorFn, { seg: 0.5 });
-      // stepping stones spiralling around the outside
+      // a connected staircase spiralling up the outside, railed on the outer edge.
+      // Low steps (<= 0.28) can simply be walked up; taller ones need little hops.
       const a = half + 0.75;
-      const n = Math.ceil(H / 1.05) - 1;
-      const stepH = H / (n + 1);
+      const rise = P.rise ?? 0.28;
+      const n = Math.ceil(H / rise);
       const per = (s) => {
         const L = 2 * a, k = ((Math.floor(s / L) % 4) + 4) % 4, t = (s % L) - a;
-        return [[t, a], [a, -t], [-t, -a], [-a, t]][k];
+        return { o: [[t, a], [a, -t], [-t, -a], [-a, t]][k], n: [[0, 1], [1, 0], [0, -1], [-1, 0]][k] };
       };
       const startSide = Math.atan2(-P.z, -P.x);
       const s0 = ((startSide / (Math.PI * 2)) * 8 * a + 8 * a) % (8 * a);
+      const railCol = pick(T.stone, 0.9);
       for (let i = 0; i < n; i++) {
-        const [ox, oz] = per(s0 + i * 2.05);
-        const ty = gy + stepH * (i + 1);
-        solidBox(P.x + ox, P.z + oz, 1.4, 1.4, 0.5, ty - 0.5, colorFn);
-        if (i === Math.floor(n / 2)) tunaSpots.push(new THREE.Vector3(P.x + ox, ty, P.z + oz));
-        if (rand() < 0.3) perches.push(new THREE.Vector3(P.x + ox, ty, P.z + oz));
+        const { o: [ox, oz], n: [nx, nz] } = per(s0 + i * 1.4);
+        const ty = gy + Math.min(H, rise * (i + 1));
+        solidBox(P.x + ox, P.z + oz, 1.5, 1.5, 0.5, ty - 0.5, colorFn);
+        // railing along the outer edge
+        const rx = P.x + ox + nx * 0.68, rz = P.z + oz + nz * 0.68;
+        solidBox(rx, rz, nx ? 0.14 : 1.5, nz ? 0.14 : 1.5, 0.55, ty, railCol);
+        if (i === Math.floor(n / 2)) tunaSpots.push(new THREE.Vector3(P.x + ox - nx * 0.2, ty, P.z + oz - nz * 0.2));
+        if (rand() < 0.15) perches.push(new THREE.Vector3(P.x + ox, ty, P.z + oz));
       }
       // crenellations / roof decor
       for (const [cx, cz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
@@ -610,7 +668,8 @@ export function buildWorld(level, seed = 1, { lite = false } = {}) {
     cave(P) {
       const gy = g(P.x, P.z);
       const half = 6, wallH = 4.5, t = 1;
-      const col = (p) => (p.y > gy + wallH + 0.7 ? snow : pick(T.rock, hash(Math.floor(p.y * 2) + p.x * 0.5 + p.z)));
+      const capCol = level.id === 'winter' ? [snow] : T.stoneTop;
+      const col = (p) => (p.y > gy + wallH + 0.7 ? pick(capCol, hash(p.x + p.z)) : pick(T.rock, hash(Math.floor(p.y * 2) + p.x * 0.5 + p.z)));
       // which side faces the spawn?
       const toO = Math.abs(P.x) > Math.abs(P.z) ? (P.x > 0 ? 'W' : 'E') : (P.z > 0 ? 'N' : 'S');
       const wall = (side) => {
@@ -629,13 +688,13 @@ export function buildWorld(level, seed = 1, { lite = false } = {}) {
       // mound of boulders over the top, snow cap
       for (let i = 0; i < 14; i++) {
         const a = rand() * Math.PI * 2, rr = rand() * (half + 1);
-        add(new THREE.DodecahedronGeometry(1.4 + rand() * 1.4, 0).translate(P.x + Math.cos(a) * rr, gy + wallH + 0.6 + rand() * 0.6, P.z + Math.sin(a) * rr), (p) => (p.y > gy + wallH + 1.3 ? snow : pick(T.rock, rand())), 'decor');
+        add(new THREE.DodecahedronGeometry(1.4 + rand() * 1.4, 0).translate(P.x + Math.cos(a) * rr, gy + wallH + 0.6 + rand() * 0.6, P.z + Math.sin(a) * rr), (p) => (p.y > gy + wallH + 1.3 ? pick(capCol, rand()) : pick(T.rock, rand())), 'decor');
       }
       for (let i = 0; i < 10; i++) {
         const a = rand() * Math.PI * 2, rr = half - 0.8 - rand() * 1.5;
         glowSpots.push(new THREE.Vector3(P.x + Math.cos(a) * rr, gy + 0.3, P.z + Math.sin(a) * rr));
       }
-      const light = new THREE.PointLight('#8fdcff', 12, 14, 1.4);
+      const light = new THREE.PointLight(F.glow ?? '#8fdcff', 12, 14, 1.4);
       light.position.set(P.x, gy + 3, P.z);
       group.add(light);
       const camp = addCamp(P.x, P.z, gy, 4.6, level.enemy.count);
@@ -690,6 +749,48 @@ export function buildWorld(level, seed = 1, { lite = false } = {}) {
       }
       moonSpots.push({ p: new THREE.Vector3(P.x, islandTop, P.z) });
     },
+    lilycross(P) {
+      const pool = P.pool;
+      const wy = pool.lavaY;
+      const dir = Math.atan2(-P.z, -P.x);
+      const ox = Math.cos(dir), oz = Math.sin(dir);
+      pillar(P.x, P.z, 2.4, wy + 1.0, pool.floor);
+      for (let i = 0; i < 4; i++) {
+        const d = 10.2 - i * 2.2;
+        const side = (i % 2 ? 1 : -1) * 1.0;
+        const x = P.x + ox * d - oz * side, z = P.z + oz * d + ox * side;
+        lily(x, z, wy + 0.06, 0.85);
+        if (i === 2) tunaSpots.push(new THREE.Vector3(x, wy + 0.06, z));
+      }
+      // a few dead-end pads to make it look natural
+      for (let i = 0; i < 6; i++) {
+        const a = rand() * Math.PI * 2, d = 4 + rand() * 6;
+        lily(P.x + Math.cos(a) * d, P.z + Math.sin(a) * d, wy + 0.06, 0.6 + rand() * 0.5);
+      }
+      moonSpots.push({ p: new THREE.Vector3(P.x, wy + 1.0, P.z) });
+    },
+    boss(P) {
+      const gy = g(P.x, P.z);
+      const entr = Math.atan2(-P.z, -P.x);
+      const n = 16;
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2;
+        if (Math.abs(Math.atan2(Math.sin(a - entr), Math.cos(a - entr))) < 0.42) continue;
+        const x = P.x + Math.cos(a) * 15, z = P.z + Math.sin(a) * 15;
+        const h = 3 + (i % 3) * 1.2;
+        solidBox(x, z, 1.5, 1.5, h + 0.5, gy - 0.5, stoneColor(gy + h), { seg: 0.75 });
+      }
+      const camp = addCamp(P.x, P.z, gy, 13.5, 0);
+      camp.boss = P.boss;
+      camp.spawns.push({ type: 'boss', boss: P.boss, x: P.x + Math.cos(entr) * 2, z: P.z + Math.sin(entr) * 2 });
+      const cx = P.x - Math.cos(entr) * 10, cz = P.z - Math.sin(entr) * 10;
+      solidBox(cx, cz, 1.8, 1.8, 0.6, gy - 0.2, stoneColor(gy + 0.4));
+      camp.cage = makeCage(cx, gy + 0.4, cz);
+      camp.cx = cx;
+      camp.cz = cz;
+      camp.moon = moonSpots.length;
+      moonSpots.push({ p: new THREE.Vector3(cx, gy + 0.4, cz), lock: camps.length - 1 });
+    },
     oasis(P) {
       const water = new THREE.Mesh(new THREE.CircleGeometry(5, 16).rotateX(-Math.PI / 2),
         new THREE.MeshStandardMaterial({ color: '#4fb3d9', roughness: 0.1, metalness: 0.1, transparent: true, opacity: 0.85, flatShading: true }));
@@ -703,6 +804,53 @@ export function buildWorld(level, seed = 1, { lite = false } = {}) {
       tunaSpots.push(new THREE.Vector3(P.x, g(P.x, P.z), P.z));
     },
   };
+  // ── Sky islands: stepping-stone bridges along the trails + checkpoint lanterns ──
+  const checkpoints = [];
+  if (VOID) {
+    const diff = level.platforming ?? 0.4;
+    const spacing = 2.7 + diff * 0.7;
+    const bridgePads = [];
+    targets.forEach((L, k) => {
+      const isl = islands.find((o) => o.x === L.x && o.z === L.z);
+      const [a, b] = [paths[k * 2], paths[k * 2 + 1]];
+      const l1 = Math.hypot(a[2] - a[0], a[3] - a[1]), l2 = Math.hypot(b[2] - b[0], b[3] - b[1]);
+      const len = l1 + l2;
+      let n = 0;
+      for (let d = 0; d < len; d += spacing) {
+        const seg = d < l1 ? a : b, u = d < l1 ? d / l1 : (d - l1) / l2;
+        const dx = seg[2] - seg[0], dz = seg[3] - seg[1], dl = Math.hypot(dx, dz);
+        const jit = (rand() - 0.5) * 1.6 * diff;
+        const x = seg[0] + dx * u - (dz / dl) * jit, z = seg[1] + dz * u + (dx / dl) * jit;
+        if (solid(x, z, 1.4)) continue;
+        if (bridgePads.some((q) => Math.hypot(q.x - x, q.z - z) < spacing * 0.8)) continue;
+        // height eases from the spawn island's edge to the target island's edge
+        const t = clamp((d - 14) / Math.max(1, len - 14 - isl.r), 0, 1);
+        const y = lerp(0, isl.h, t) + Math.sin(t * Math.PI * 3) * 0.5 * diff + 0.2;
+        pad(x, y, z, 1.15 - 0.3 * diff, 'isle');
+        bridgePads.push({ x, z });
+        if (++n % 4 === 0) tunaSpots.push(new THREE.Vector3(x, y, z));
+      }
+    });
+    // a lantern on every island; touching one makes it your respawn point
+    for (const isl of islands) {
+      if (isl.r < 8 && !isl.spawn) continue;
+      const toO = isl.spawn ? 0 : Math.atan2(-isl.z, -isl.x);
+      const lx = isl.spawn ? -3 : isl.x + Math.cos(toO) * isl.r * 0.6, lz = isl.spawn ? 3 : isl.z + Math.sin(toO) * isl.r * 0.6;
+      if (!solid(lx, lz, 0.5)) continue;
+      const ly = g(lx, lz);
+      add(new THREE.CylinderGeometry(0.07, 0.1, 1.6, 6).translate(lx, ly + 0.8, lz), C('#3b3346'), 'decor');
+      const lamp = new THREE.Mesh(new THREE.OctahedronGeometry(0.2, 0), new THREE.MeshStandardMaterial({ color: '#c9c2dd', emissive: '#7a6aa8', emissiveIntensity: 0.4, flatShading: true }));
+      lamp.position.set(lx, ly + 1.8, lz);
+      group.add(lamp);
+      checkpoints.push({ pos: new THREE.Vector3(lx + 0.8, ly, lz + 0.8), lamp, active: !!isl.spawn });
+    }
+    // cloud sea far below
+    for (let i = 0; i < 60; i++) {
+      const a = rand() * Math.PI * 2, d = rand() * (R + 30);
+      add(new THREE.IcosahedronGeometry(4 + rand() * 6, 0).scale(1.6, 0.5, 1.6).translate(Math.cos(a) * d, -16 - rand() * 10, Math.sin(a) * d), pick(T.cloud ?? [C('#ffffff')], rand()), 'decor');
+    }
+  }
+
   for (const P of level.pois) POI[P.type](P);
   for (const P of level.extras ?? []) POI[P.type](P);
 
@@ -838,7 +986,7 @@ export function buildWorld(level, seed = 1, { lite = false } = {}) {
     i++;
   }
   // backdrop ring on the hills (no collision — the player is clamped inside)
-  if (!F.city) {
+  if (!F.city && !VOID) {
     for (let i = 0; i < (lite ? 90 : 150); i++) {
       const a = rand() * Math.PI * 2, r = R + 1.5 + rand() * 24;
       const x = Math.cos(a) * r, z = Math.sin(a) * r;
@@ -854,7 +1002,7 @@ export function buildWorld(level, seed = 1, { lite = false } = {}) {
     if (pathDist(x, z) < 1.8 || !isFree(x, z, 0)) continue;
     bush(x, z, T.leaves.length ? [C('#3d7f3a'), C('#468a40'), C('#356f33')] : T.leaves);
   }
-  const caps = [C('#d9473a'), C('#c9a27a'), C('#e8c06a')];
+  const caps = (F.caps ?? ['#d9473a', '#c9a27a', '#e8c06a']).map(C);
   for (let i = 0; i < F.mushrooms; i++) {
     const a = rand() * Math.PI * 2, r = 8 + Math.sqrt(rand()) * (R - 9);
     const x = Math.cos(a) * r, z = Math.sin(a) * r;
@@ -880,6 +1028,28 @@ export function buildWorld(level, seed = 1, { lite = false } = {}) {
     placed.push({ x, z, r: 0.5 });
   }
 
+  for (let tries = 0; tunaSpots.length < 20 && tries < 4000; tries++) {
+    const a = rand() * Math.PI * 2, r = 8 + Math.sqrt(rand()) * (R - 10);
+    const x = Math.cos(a) * r, z = Math.sin(a) * r;
+    if (!isFree(x, z, 0.8)) continue;
+    tunaSpots.push(new THREE.Vector3(x, g(x, z), z));
+    placed.push({ x, z, r: 0.5 });
+  }
+  // lily pads and reeds in the marsh pools
+  for (const pl of pools) {
+    if (pl.kind !== 'water' || level.pois.some((P) => P.pool === pl)) continue;
+    for (let i = 0; i < 3 + Math.floor(rand() * 4); i++) {
+      const a = rand() * Math.PI * 2, d = rand() * (pl.r - 0.8);
+      lily(pl.x + Math.cos(a) * d, pl.z + Math.sin(a) * d, pl.lavaY + 0.06, 0.6 + rand() * 0.5);
+    }
+    for (let i = 0; i < 8; i++) {
+      const a = rand() * Math.PI * 2, d = pl.r + 0.4 + rand();
+      const x = pl.x + Math.cos(a) * d, z = pl.z + Math.sin(a) * d;
+      add(new THREE.CylinderGeometry(0.03, 0.04, 1.4, 3).translate(x, g(x, z) + 0.7, z), C('#7a8a3a'), 'decor');
+      add(new THREE.CylinderGeometry(0.07, 0.07, 0.3, 5).translate(x, g(x, z) + 1.35, z), C('#6a4a2a'), 'decor');
+    }
+  }
+
   // ── Ground perches for birds ──
   for (let i = 0, tries = 0; i < 50 && tries < 2000; tries++) {
     const a = rand() * Math.PI * 2, r = 9 + Math.sqrt(rand()) * (R - 12);
@@ -896,12 +1066,14 @@ export function buildWorld(level, seed = 1, { lite = false } = {}) {
 
   // Lava surfaces
   const lavaMat = new THREE.MeshStandardMaterial({ color: '#ff6a1a', emissive: '#ff4a0a', emissiveIntensity: 1.6, roughness: 0.6, flatShading: true });
+  const waterMat = new THREE.MeshStandardMaterial({ color: '#3f8fa8', roughness: 0.15, metalness: 0.1, transparent: true, opacity: 0.82, flatShading: true });
   for (const p of pools) {
-    const geo = new THREE.CircleGeometry(p.r + 0.9, 18, 0, Math.PI * 2).rotateX(-Math.PI / 2);
+    const geo = new THREE.CircleGeometry(p.r + (p.kind === 'water' ? 2.2 : 0.9), 18, 0, Math.PI * 2).rotateX(-Math.PI / 2);
     const lp = geo.attributes.position;
     for (let i = 1; i < lp.count; i++) lp.setY(i, (rand() - 0.5) * 0.12);
     geo.computeVertexNormals();
-    const m = new THREE.Mesh(geo, lavaMat);
+    const m = new THREE.Mesh(geo, p.kind === 'water' ? waterMat : lavaMat);
+    m.receiveShadow = p.kind === 'water';
     m.position.set(p.x, p.lavaY, p.z);
     group.add(m);
   }
@@ -923,7 +1095,7 @@ export function buildWorld(level, seed = 1, { lite = false } = {}) {
     for (let i = 0, tries = 0; i < count && tries < count * 5; tries++) {
       const a = rand() * Math.PI * 2, r = Math.sqrt(rand()) * (R + 4);
       const x = Math.cos(a) * r, z = Math.sin(a) * r;
-      if (pathDist(x, z) < 1.4 || Math.hypot(x, z) < 6.5 || pools.some((p) => Math.hypot(x - p.x, z - p.z) < p.r + 1.5)) continue;
+      if (pathDist(x, z) < 1.4 || Math.hypot(x, z) < 6.5 || pools.some((p) => Math.hypot(x - p.x, z - p.z) < p.r + 1.5) || !solid(x, z, 0.3)) continue;
       q.setFromEuler(e.set((rand() - 0.5) * 0.5, rand() * 3, (rand() - 0.5) * 0.5));
       sv.setScalar(0.7 + rand() * 0.9);
       mesh.setMatrixAt(i, m4.compose(v.set(x, g(x, z) + y, z), q, sv));
@@ -984,6 +1156,10 @@ export function buildWorld(level, seed = 1, { lite = false } = {}) {
     camps,
     gate,
     pools,
+    checkpoints,
+    void: VOID,
+    paths,
+    islands,
     solids: meshes.solid,
     bounds: R - 1,
     spawn: new THREE.Vector3(0, 0, 4),

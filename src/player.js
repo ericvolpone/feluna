@@ -38,6 +38,9 @@ export class Player {
     this.gliding = false;
     this.events = [];
     this.invuln = 0;
+    this.attackCd = 0;
+    this.pounce = null; // { t, target, hit }
+    this.safeT = 0; // brief invulnerability after a pounce
     this.stepPhase = 0;
     this.speed = 0;
     this.inLava = null;
@@ -69,19 +72,47 @@ export class Player {
     this.events.length = 0;
     this.regrab -= dt;
     this.invuln -= dt;
+    this.attackCd -= dt;
+    this.safeT -= dt;
     this.cat.root.visible = this.invuln <= 0 || Math.floor(this.invuln * 14) % 2 === 0;
 
-    if (s.clawPressed) {
-      this.cat.swipe();
-      this.events.push('swipe');
-      if (!this.climb && this.regrab <= 0) {
-        const c = this.findTrunk();
-        if (c) this.latch(c);
+    // The claw button latches onto a trunk if you're next to one, otherwise attacks
+    if (s.clawPressed && !this.climb && !this.pounce) {
+      const trunk = this.regrab <= 0 ? this.findTrunk() : null;
+      if (trunk) {
+        this.cat.swipe();
+        this.events.push('swipe');
+        this.latch(trunk);
+      } else if (this.attackCd <= 0) {
+        this.attackCd = this.hero.attack.cooldown;
+        this.events.push('attack');
       }
     }
 
     if (this.climb) this.updateClimb(dt, s, camYaw, mods);
     else this.updateMove(dt, s, camYaw, mods);
+  }
+
+  /** Can't be hurt right now (blinking after a hit, or mid-pounce). */
+  get isSafe() {
+    return this.invuln > 0 || !!this.pounce || this.safeT > 0;
+  }
+
+  /** Leap at target (a Vector3) or, with no target, a short pounce forward. */
+  startPounce(target) {
+    const T = 0.42;
+    if (target) {
+      const dx = target.x - this.pos.x, dz = target.z - this.pos.z;
+      const dy = target.y - this.pos.y;
+      this.vel.set(dx / T, Math.min(14, (dy + 0.5 * GRAVITY * T * T) / T), dz / T);
+      this.facing = Math.atan2(dx, dz);
+    } else {
+      this.vel.set(Math.sin(this.facing) * 7.5, 6.5, Math.cos(this.facing) * 7.5);
+    }
+    this.pounce = { t: 0, target, hit: false };
+    this.grounded = false;
+    this.cat.meow();
+    this.events.push('pounce');
   }
 
   /** Pushed away from a hit. */
@@ -192,10 +223,12 @@ export class Player {
     const dl = Math.hypot(dx, dz) || 1;
     const tx = (dx / dl) * mag * maxSpeed, tz = (dz / dl) * mag * maxSpeed;
 
-    const accel = (this.grounded ? 48 : 16) * dt;
+    const accel = (this.pounce ? 0 : this.grounded ? 48 : 16) * dt;
     const ex = tx - this.vel.x, ez = tz - this.vel.z;
     const el = Math.hypot(ex, ez);
-    if (el > accel) {
+    if (this.pounce) {
+      // committed to the leap
+    } else if (el > accel) {
       this.vel.x += (ex / el) * accel;
       this.vel.z += (ez / el) * accel;
     } else {
@@ -210,7 +243,9 @@ export class Player {
     this.jumpBuffer = s.jumpPressed ? BUFFER * ease : this.jumpBuffer - dt;
     this.coyote = this.grounded ? COYOTE * ease : this.coyote - dt;
     if (this.grounded) this.airJumpsLeft = mods.airJumps;
-    if (this.jumpBuffer > 0 && this.coyote > 0) {
+    if (this.pounce) {
+      this.jumpBuffer = 0;
+    } else if (this.jumpBuffer > 0 && this.coyote > 0) {
       this.vel.y = jumpV;
       this.grounded = false;
       this.coyote = this.jumpBuffer = 0;
@@ -222,7 +257,7 @@ export class Player {
       this.cat.land(0.3);
       this.events.push('flutter');
     }
-    const cut = !s.jump && this.vel.y > 0 ? 1.8 : 0;
+    const cut = !s.jump && this.vel.y > 0 && !this.pounce ? 1.8 : 0;
     this.vel.y = Math.max(-30, this.vel.y - GRAVITY * (1 + cut) * dt);
     this.gliding = mods.glide && s.jump && !this.grounded && this.vel.y < -GLIDE_FALL;
     if (this.gliding) this.vel.y = -GLIDE_FALL;
@@ -230,6 +265,14 @@ export class Player {
     const wasGrounded = this.grounded;
     const landVy = this.vel.y;
     this.collide(dt, wasGrounded);
+    if (this.pounce) {
+      this.pounce.t += dt;
+      if ((this.grounded && this.pounce.t > 0.08) || this.pounce.t > 2) {
+        this.events.push('pounceLand');
+        this.pounce = null;
+        this.safeT = 0.35;
+      }
+    }
     if (!wasGrounded && this.grounded) {
       this.cat.land(clamp(-landVy / 16, 0.15, 1));
       this.events.push(landVy < -8 ? 'land' : 'softland');

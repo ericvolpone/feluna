@@ -213,6 +213,11 @@ export const MUSIC = {
   desert: { root: 52, scale: 'phrygian', bpm: 92, prog: [0, 1, 0, 6], pad: 'triangle', lead: 'triangle', density: 0.45, bass: true, shaker: true },
   city: { root: 53, scale: 'mixolydian', bpm: 100, prog: [0, 6, 3, 4], pad: 'triangle', lead: 'square', density: 0.45, bass: true, hats: true },
   lava: { root: 45, scale: 'minor', bpm: 88, prog: [0, 5, 3, 6], pad: 'sawtooth', lead: 'triangle', density: 0.4, bass: true, drum: true },
+  marsh: { root: 50, scale: 'dorian', bpm: 76, prog: [0, 3, 4, 3], pad: 'triangle', lead: 'triangle', density: 0.4, bass: true },
+  cloud: { root: 60, scale: 'lydian', bpm: 88, prog: [0, 1, 4, 3], pad: 'sine', lead: 'sine', density: 0.5, bell: true },
+  fortress: { root: 50, scale: 'minor', bpm: 104, prog: [0, 5, 6, 4], pad: 'sawtooth', lead: 'square', density: 0.45, bass: true, drum: true },
+  crystal: { root: 54, scale: 'minor', bpm: 70, prog: [0, 5, 3, 6], pad: 'sine', lead: 'sine', density: 0.3, bell: true },
+  moon: { root: 57, scale: 'lydian', bpm: 72, prog: [0, 4, 5, 1], pad: 'triangle', lead: 'sine', density: 0.4, bell: true, bass: true },
 };
 
 let current = null, wanted = null;

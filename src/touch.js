@@ -109,6 +109,20 @@ export class TouchControls {
     this.base.classList.toggle('sprint', d > STICK_R * 1.15);
   }
 
+  /** Label the attack button for the current hero. */
+  setAttack(name) {
+    this.buttons.claw.el.textContent = name;
+  }
+
+  /** 0 = just used, 1 = ready. */
+  setCooldown(f) {
+    const q = Math.round(f * 40) / 40;
+    if (q === this.cdShown) return;
+    this.cdShown = q;
+    this.buttons.claw.el.style.setProperty('--cd', q);
+    this.buttons.claw.el.classList.toggle('cooling', q < 1);
+  }
+
   setVisible(on) {
     if (on === this.visible) return;
     this.visible = on;

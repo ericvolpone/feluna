@@ -16,24 +16,45 @@ Open http://localhost:5173. Chrome/Edge (WebGPU) recommended; Safari and Firefox
 
 ## Gameplay
 
-A run is five levels: **Whisker Woods → Frostpaw Peaks → Sunscratch Dunes →
-Alley City → Ember Crater**.
+A run is ten levels, each with its own challenge:
 
-- **Moonstones (5 per level):** each sits at a point of interest (canopy walks,
-  spiral trees, towers, floating isles, a pyramid, rooftops, a lava crossing...).
-  Find all 5 to open the **Moon Gate** straight ahead of the spawn, then walk
-  through it to reach the next level.
-- **Guarded camps (2 per level):** their moonstone is caged. Defeat the guards
-  (claw them, or jump on them) to open the cage. Clearing every guard in a level
-  earns a powerup.
-- **Hearts:** you start with 3. Enemies and lava take one each. Defeated enemies
-  sometimes drop a heart. Out of hearts ends the run.
+| # | Level | Focus |
+| --- | --- | --- |
+| 1 | Whisker Woods | intro: walkable tower, canopy walk, spiral tree |
+| 2 | Frostpaw Peaks | ice cave, watchtower |
+| 3 | Sunscratch Dunes | pyramid, obelisk, oasis |
+| 4 | Lilypad Marsh | deep water, lily pad crossings |
+| 5 | Alley City | rooftops, drainpipes, clock tower |
+| 6 | Cloudtop Gardens | floating islands, stepping-stone bridges, checkpoint lanterns |
+| 7 | Thornback Fortress | combat: four camps and the Thornback boss |
+| 8 | Crystal Hollow | dark caverns, tougher guards |
+| 9 | Ember Crater | lava |
+| 10 | Moonrise Sanctum | hard sky platforming and the Gloom King boss |
+
+- **Moonstones (5 per level):** find them all to open the **Moon Gate**.
+- **Guarded moonstones:** caged until you defeat the guards (or boss) nearby.
+  Clearing every guard in a level earns a powerup.
 - **Tuna cans (20 per level):** find them all for a powerup.
 - **Powerups:** Swift Paws (+speed), Spring Legs (+jump), Extra Heart (+1 max).
-- **Climbing:** swipe next to a trunk, lamp post or drainpipe to latch on, hold
-  claws to climb, jump to leap off.
-- **Minimap:** shows the gate, moonstones, remaining tuna, wild birds and
-  guarded camps, so you can tell when a level is 100% complete.
+- **Hearts:** enemies, lava, water and falling off a sky island cost one each.
+- **Tower stairs** spiral up the outside with railings; level 1's can simply be
+  walked, later ones need hops.
+- **Minimap** shows the gate, moonstones, remaining tuna, wild birds and camps.
+
+### Heroes
+
+| Hero | Attack |
+| --- | --- |
+| Felix | **Claws:** wide swipe in front, short cooldown |
+| Luna | **Pounce:** leaps at a nearby enemy and bites for 2, can't be hurt mid-pounce, longer cooldown |
+
+A third, locked hero is teased on the select screen.
+
+### Saved progress
+
+Progress is saved in your browser. After picking a hero you can start from any
+level you've reached, with the upgrades and bird friends you had when you got
+there. Dying offers **Retry Level N** the same way.
 
 ### Birds
 
@@ -48,7 +69,10 @@ to befriend one. Each friend has a job and follows you between levels:
 | Robin | Healer: brings you a heart now and then |
 | Chickadee | Guardian: puffs up a shield that blocks one hit |
 
-Befriending a kind you already have levels that friend up instead. Befriend
+Befriending a kind you already have levels that friend up instead: it acts more
+often (and Fighter/Fetcher reach farther). Stars on the HUD show each friend's
+level, with silver and gold borders past three stars; the pause menu lists exact
+numbers for the current and next level. Befriend
 all 5 birds in a level to unlock the next jump tier: Double Jump → Triple Jump
 → Glide → Quadruple Jump → Five Jumps.
 
@@ -80,7 +104,8 @@ press (controller buttons don't count), so click once if you don't hear anything
 | `src/heroes.js` | Hero definitions (stats, colors) |
 | `src/levels.js` | The five level themes: palettes, terrain, POIs, enemies |
 | `src/world.js` | Level builder: terrain, POIs, Moon Gate, collectibles, collision |
-| `src/enemies.js` | Blob and beetle guards, combat |
+| `src/enemies.js` | Blob and beetle guards, bosses, shockwaves |
+| `src/save.js` | Progress saved in localStorage |
 | `src/birds.js` | Songbirds: perching, flying, befriending, following |
 | `src/particles.js` | Billboard particles (hearts, notes, sparkles, slashes) |
 | `src/audio.js` | Synthesized sound effects + generative music per level |

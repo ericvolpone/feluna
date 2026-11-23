@@ -56,13 +56,37 @@ function buildBird(sp, mat, darkMat) {
   return { root, body, head, wings };
 }
 
-/** What each kind of bird friend does for you. */
+/**
+ * What each kind of bird friend does, and how levelling up helps: `cd(lv)` is the
+ * seconds between actions, `range(lv)` how far it reaches. `stat(lv)` describes it.
+ */
+const sec = (v) => `${Math.round(v * 10) / 10}s`;
 export const ROLES = {
-  Cardinal: { role: 'Fighter', desc: 'Swoops at guards near you' },
-  Canary: { role: 'Fetcher', desc: 'Fetches nearby tuna and hearts' },
-  Bluebird: { role: 'Scout', desc: 'Points the way to the nearest moonstone' },
-  Robin: { role: 'Healer', desc: 'Brings you a heart now and then' },
-  Chickadee: { role: 'Guardian', desc: 'Puffs up a shield that blocks a hit' },
+  Cardinal: {
+    role: 'Fighter', color: '#d9332e', desc: 'Swoops at guards near you',
+    cd: (lv) => Math.max(1.6, 4.2 - 0.7 * (lv - 1)), range: (lv) => 8 + lv,
+    stat(lv) { return `Swoops every ${sec(this.cd(lv))} at guards within ${this.range(lv)} m`; },
+  },
+  Canary: {
+    role: 'Fetcher', color: '#ffd84a', desc: 'Fetches nearby tuna and hearts',
+    cd: () => 0.6, range: (lv) => 7 + 2 * (lv - 1),
+    stat(lv) { return `Fetches tuna and hearts within ${this.range(lv)} m`; },
+  },
+  Bluebird: {
+    role: 'Scout', color: '#4a8be0', desc: 'Points the way to the nearest moonstone',
+    cd: (lv) => Math.max(7, 15 - 3 * (lv - 1)), range: () => 9,
+    stat(lv) { return `Points to the nearest moonstone every ${sec(this.cd(lv))}`; },
+  },
+  Robin: {
+    role: 'Healer', color: '#e8643a', desc: 'Brings you a heart now and then',
+    cd: (lv) => Math.max(20, 45 - 10 * (lv - 1)), range: () => 0,
+    stat(lv) { return `Brings a heart every ${sec(this.cd(lv))} while you're hurt`; },
+  },
+  Chickadee: {
+    role: 'Guardian', color: '#9aa0a8', desc: 'Puffs up a shield that blocks a hit',
+    cd: (lv) => Math.max(15, 35 - 8 * (lv - 1)), range: () => 0,
+    stat(lv) { return `Shield blocks one hit, recharges in ${sec(this.cd(lv))}`; },
+  },
 };
 export const FLOCK_KINDS = Object.keys(ROLES);
 

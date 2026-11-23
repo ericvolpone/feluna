@@ -11,6 +11,8 @@ export const HEROES = [
     furRoughness: 0.5,
     lashes: false,
     meowPitch: 0.85,
+    // Wide claw swipe in front of you
+    attack: { type: 'claw', name: 'Claws', cooldown: 0.55, reach: 1.05, radius: 1.35, damage: 1 },
     build: { girth: 1.22, collar: false },
     stats: { speed: 5.6, sprint: 1.6, jump: 10.2, climb: 1.7 },
     bars: { Power: 4, Vitality: 4, Speed: 3, Climb: 3 },
@@ -39,6 +41,8 @@ export const HEROES = [
     furRoughness: 0.85,
     lashes: true,
     meowPitch: 1.45,
+    // Leaping bite that locks onto a nearby enemy; safe from hits mid-pounce
+    attack: { type: 'pounce', name: 'Pounce', cooldown: 1.1, range: 7, damage: 2 },
     build: { girth: 1.0, collar: true },
     stats: { speed: 6.2, sprint: 1.6, jump: 11.0, climb: 2.2 },
     bars: { Power: 2, Vitality: 3, Speed: 5, Climb: 5 },
@@ -55,6 +59,29 @@ export const HEROES = [
       whisker: '#ffffff',
       collar: '#3bb8a9',
       charm: '#ffd36a',
+    },
+  },
+  {
+    // Teaser: shown as a silhouette on hero select, not playable yet.
+    id: 'mochi',
+    name: 'Mochi',
+    locked: true,
+    unlockText: 'Reach level 5 to meet this friend (coming soon)',
+    title: 'A mysterious friend',
+    blurb: 'Someone fluffy is waiting out there in the moonlight...',
+    accent: '#ffb36a',
+    scale: 0.95,
+    furRoughness: 0.9,
+    lashes: false,
+    meowPitch: 1.1,
+    attack: { type: 'claw', name: 'Claws', cooldown: 0.55, reach: 1.05, radius: 1.35, damage: 1 },
+    build: { girth: 1.12, collar: true },
+    stats: { speed: 5.8, sprint: 1.6, jump: 10.5, climb: 2.0 },
+    bars: { Power: 0, Vitality: 0, Speed: 0, Climb: 0 },
+    palette: {
+      top: '#e8913a', belly: '#fbe3c4', frontLegs: '#fbe3c4', hindLegs: '#e8913a', sock: '#fbe3c4',
+      tailTip: '#fbe3c4', earInner: '#f5a9b8', nose: '#ef8ca0', eye: '#c98bff', whisker: '#ffffff',
+      collar: '#7a5cff', charm: '#ffd36a',
     },
   },
 ];

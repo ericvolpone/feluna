@@ -10,6 +10,7 @@ import { Hud } from './hud.js';
 import { sfx, playMusic } from './audio.js';
 import { clamp, damp, dampAngle, disposeTree } from './util.js';
 import { LITE } from './device.js';
+import { Save } from './save.js';
 
 const MOUSE_SENS = 0.0024;
 const STICK_YAW = 2.8;
@@ -30,6 +31,16 @@ export function newRun(hero) {
     flockTier: 0, // whole flocks befriended -> jump tier
     start: performance.now(),
   };
+}
+
+/** A run starting at `level`, restored from the save made when this hero last reached it. */
+export function runFrom(hero, level = 0) {
+  const run = newRun(hero);
+  const snap = level > 0 ? Save.snapshotAt(hero.id, level) : null;
+  if (snap) Object.assign(run, JSON.parse(JSON.stringify(snap)));
+  run.level = snap ? level : 0;
+  run.hearts = run.maxHearts;
+  return run;
 }
 
 export class GameScene {
@@ -67,6 +78,9 @@ export class GameScene {
     this.levelTuna = 0;
     this.levelBirds = 0;
     this.flockCd = {};
+    this.safePos = this.player.pos.clone();
+    this.safeT = 0;
+    this.checkpoint = this.world.spawn.clone();
     this.completeShown = false;
     this.mapFrame = 0;
 
@@ -99,6 +113,8 @@ export class GameScene {
       this.contextKey = null;
     };
     this.hud.banner(`Level ${run.level + 1}`, L.name);
+    this.input.touch.setAttack(this.hero.attack.name);
+    this.hud.setAttackName(this.hero.attack.name);
     playMusic(L.music);
 
     this.paused = false;
@@ -153,6 +169,7 @@ export class GameScene {
       tier: FLOCK_TIERS[Math.min(r.flockTier, FLOCK_TIERS.length - 1)].name,
     };
     this.hud.setStats(st);
+    this.hud.setFlockBar(r.friends, ROLES);
     if (!this.completeShown && st.moon === st.moonTotal && st.tuna === st.tunaTotal && st.birds === st.birdsTotal) {
       this.completeShown = true;
       setTimeout(() => this.hud.banner('100% complete', `${this.level.name} ★`), 2600);
@@ -219,7 +236,7 @@ export class GameScene {
   // ── Damage / end states ──
   hurt(from, knock = true) {
     const p = this.player;
-    if (p.invuln > 0 || this.ended) return;
+    if (p.isSafe || this.ended) return;
     if (this.run.shield > 0) {
       // the Chickadee's shield takes the hit
       this.run.shield = 0;
@@ -254,12 +271,15 @@ export class GameScene {
       friends: this.friendCount,
       time: `${mins}:${String(secs).padStart(2, '0')}`,
     }, 0);
-    if (kind === 'victory') sfx.gateOpen();
+    if (kind === 'victory') {
+      sfx.gateOpen();
+      Save.runCleared(this.hero.id);
+    }
   }
 
   chooseEnd(i) {
     if (!this.ended) return;
-    if (i === 0) this.cb.onRetry();
+    if (i === 0) this.cb.onRetry(this.ended.kind);
     else this.cb.onQuit();
   }
 
@@ -316,8 +336,8 @@ export class GameScene {
         this.yaw = dampAngle(this.yaw, p.facing + Math.PI, k, dt);
         this.pitch = damp(this.pitch, 0.3, k * 0.5, dt);
       }
-      // Claw aim assist: turn toward the nearest guard in reach
-      if (s.clawPressed && !p.climb) {
+      // Claw aim assist: turn toward the nearest guard in reach (Luna's pounce locks on by itself)
+      if (s.clawPressed && !p.climb && this.hero.attack.type === 'claw') {
         let best = null, bd = 3;
         for (const e of this.enemies.list) {
           if (e.dead) continue;
@@ -332,6 +352,8 @@ export class GameScene {
     }
     p.update(dt, s, this.yaw, this.mods);
     this.handleEvents();
+    this.updatePounce();
+    this.input.touch.setCooldown(clamp(1 - p.attackCd / this.hero.attack.cooldown, 0, 1));
 
     // Meow
     this.meowCd -= dt;
@@ -343,8 +365,10 @@ export class GameScene {
       for (const b of this.birds.meow(p.pos, this.particles, sfx)) this.befriend(b);
     }
 
+    this.updateHazards(dt);
+
     // Lava burns while you stand in it
-    if (p.inLava && p.invuln <= 0) {
+    if (p.inLava?.kind === 'lava' && p.invuln <= 0) {
       sfx.sizzle();
       this.particles.burst('puff', p.pos, 6, { size: 0.5, speed: 1.5, up: 2, life: 0.6 });
       this.hurt(p.pos, false);
@@ -357,6 +381,8 @@ export class GameScene {
     // Enemies
     const res = this.enemies.update(dt, p);
     if (res.hurt) this.hurt(res.hurt);
+    const boss = this.enemies.activeBoss();
+    this.hud.setBoss(boss ? boss.name : null, boss ? Math.max(0, boss.hp) / boss.maxHp : 0);
     if (res.stomped) {
       sfx.hit();
       this.particles.burst('puff', p.pos, 5, { size: 0.5, speed: 2, up: 0.5, life: 0.4 });
@@ -386,15 +412,16 @@ export class GameScene {
     for (const e of p.events) {
       if (e === 'swipe') {
         sfx.swipe();
-        const fx = Math.sin(p.facing), fz = Math.cos(p.facing);
-        const at = this._v.set(p.pos.x + fx * 0.7, p.pos.y + 0.6 * this.hero.scale, p.pos.z + fz * 0.7);
-        this.particles.spawn('slash', at, { vel: new THREE.Vector3(fx, 0, fz), size: 0.9, life: 0.22 });
-        this.birds.startle(p.pos, 3.5);
-        const hits = this.enemies.swipe(p);
-        if (hits.length) {
-          sfx.hit();
-          for (const h of hits) this.particles.burst('sparkle', h.root.position.clone().setY(h.root.position.y + 0.5), 4, { size: 0.3, speed: 2, up: 1.5, life: 0.35, additive: true });
+      } else if (e === 'attack') {
+        this.doAttack();
+      } else if (e === 'pounceLand') {
+        // a pounce with no target bites whatever is right in front on landing
+        const info = this.pounceInfo;
+        if (info && !info.e && !info.hit) {
+          const fx = Math.sin(p.facing), fz = Math.cos(p.facing);
+          this.reportHits(this.enemies.hitAt(p.pos.x + fx * 0.8, p.pos.z + fz * 0.8, p.pos.y, 1.0, this.hero.attack.damage, fx, fz));
         }
+        this.pounceInfo = null;
       } else if (e === 'latch') {
         sfx.latch();
       } else if (e === 'jump' || e === 'mount') {
@@ -416,6 +443,97 @@ export class GameScene {
     }
   }
 
+  // ── Water, the void, checkpoints ──
+  updateHazards(dt) {
+    const p = this.player, W = this.world;
+    // remember the last safe spot on solid ground (away from pools)
+    if (p.grounded && !p.inLava && !p.climb && !W.void) {
+      this.safeT += dt;
+      const nearPool = W.pools.some((pl) => Math.hypot(p.pos.x - pl.x, p.pos.z - pl.z) < pl.r + 2.5);
+      if (this.safeT > 0.5 && !nearPool) {
+        this.safePos.copy(p.pos);
+        this.safeT = 0;
+      }
+    }
+    for (const cp of W.checkpoints) {
+      if (cp.active === 'current' || p.pos.distanceTo(cp.pos) > 2.4) continue;
+      for (const o of W.checkpoints) if (o.active === 'current') o.active = true;
+      cp.active = 'current';
+      this.checkpoint.copy(cp.pos);
+      cp.lamp.material.emissive.set('#ffd36a');
+      cp.lamp.material.emissiveIntensity = 2;
+      sfx.heal();
+      this.hud.toast('🏮 Checkpoint!');
+    }
+    for (const cp of W.checkpoints) cp.lamp.rotation.y += dt * (cp.active === 'current' ? 2 : 0.5);
+
+    if (p.inLava?.kind === 'water') {
+      sfx.sizzle();
+      this.particles.burst('puff', p.pos, 8, { size: 0.6, speed: 2, up: 2.5, life: 0.6 });
+      this.hud.toast('Splash! Cats and water don\'t mix');
+      this.respawn(this.safePos);
+    } else if (W.void && p.pos.y < -12) {
+      this.hud.toast('Whoops! Back to the last lantern');
+      this.respawn(this.checkpoint);
+    }
+  }
+
+  respawn(to) {
+    const p = this.player;
+    const wasSafe = p.invuln > 0;
+    p.pos.copy(to);
+    p.vel.set(0, 0, 0);
+    p.climb = null;
+    p.pounce = null;
+    p.inLava = null;
+    p.grounded = true;
+    this.focus.copy(p.pos).y += 0.9;
+    if (!wasSafe) this.hurt(p.pos, false);
+    p.invuln = Math.max(p.invuln, 1.2);
+  }
+
+  // ── Hero attacks ──
+  doAttack() {
+    const p = this.player, A = this.hero.attack;
+    const fx = Math.sin(p.facing), fz = Math.cos(p.facing);
+    this.birds.startle(p.pos, 3.5);
+    if (A.type === 'claw') {
+      p.cat.swipe();
+      sfx.swipe();
+      const at = this._v.set(p.pos.x + fx * A.reach, p.pos.y + 0.6 * this.hero.scale, p.pos.z + fz * A.reach);
+      this.particles.spawn('slash', at, { vel: new THREE.Vector3(fx, 0, fz), size: 1.5, life: 0.24 });
+      this.reportHits(this.enemies.hitAt(at.x, at.z, p.pos.y, A.radius, A.damage, fx, fz));
+    } else if (A.type === 'pounce') {
+      const e = this.enemies.nearest(p.pos, A.range);
+      p.startPounce(e ? e.root.position.clone().setY(e.pos.y + e.hopY + 0.2) : null);
+      this.pounceInfo = { e, hit: false };
+      sfx.swipe();
+      sfx.meow((this.hero.meowPitch ?? 1) * 1.25);
+    }
+  }
+
+  /** During a locked-on pounce, bite on contact and bounce off. */
+  updatePounce() {
+    const p = this.player, info = this.pounceInfo;
+    if (!p.pounce || !info?.e || info.hit) return;
+    const e = info.e;
+    if (e.dead) return;
+    const cx = e.pos.x, cy = e.pos.y + e.hopY + e.height * 0.5, cz = e.pos.z;
+    const d = Math.hypot(p.pos.x - cx, p.pos.y + 0.4 - cy, p.pos.z - cz);
+    if (d > e.radius + 0.9) return;
+    info.hit = true;
+    const dx = cx - p.pos.x, dz = cz - p.pos.z, l = Math.hypot(dx, dz) || 1;
+    this.enemies.damage(e, this.hero.attack.damage, dx / l, dz / l);
+    this.reportHits([e]);
+    p.vel.set((-dx / l) * 4.5, 7.5, (-dz / l) * 4.5);
+  }
+
+  reportHits(hits) {
+    if (!hits.length) return;
+    sfx.hit();
+    for (const h of hits) this.particles.burst('sparkle', h.root.position.clone().setY(h.root.position.y + 0.5), 5, { size: 0.32, speed: 2, up: 1.5, life: 0.35, additive: true });
+  }
+
   befriend(b) {
     const r = this.run;
     const kind = b.kind;
@@ -426,7 +544,7 @@ export class GameScene {
     const role = ROLES[kind];
     this.hud.toast(result === 'new'
       ? `♥ ${kind} joined! ${role.role}: ${role.desc}`
-      : `♥ The ${kind}s cheer! ${role.role} Lv ${r.friends[kind]}`);
+      : `♥ ${kind} Lv ${r.friends[kind]}! ${role.stat(r.friends[kind])}`);
     if (this.levelBirds === FLOCK_KINDS.length && r.flockTier < FLOCK_TIERS.length - 1) {
       r.flockTier++;
       const tier = FLOCK_TIERS[r.flockTier];
@@ -445,13 +563,14 @@ export class GameScene {
       const lv = r.friends[kind];
       const b = B.follower(kind);
       cd[kind] = (cd[kind] ?? 2 + Math.random() * 2) - dt;
-      if (kind === 'Chickadee' && r.shield > 0) cd[kind] = Math.max(15, 35 - 8 * (lv - 1));
+      const R = ROLES[kind];
+      if (kind === 'Chickadee' && r.shield > 0) cd[kind] = R.cd(lv);
       if (!b || B.busy(b) || cd[kind] > 0) continue;
 
       if (kind === 'Cardinal') {
         // Fighter: dive-bomb the nearest guard
         cd[kind] = 0.5;
-        let e = null, bd = 8 + lv;
+        let e = null, bd = R.range(lv);
         for (const en of this.enemies.list) {
           if (en.dead) continue;
           const d = Math.hypot(en.pos.x - p.pos.x, en.pos.z - p.pos.z);
@@ -461,7 +580,7 @@ export class GameScene {
           }
         }
         if (!e) continue;
-        cd[kind] = Math.max(1.6, 4.2 - 0.7 * (lv - 1));
+        cd[kind] = R.cd(lv);
         B.sendOnTask(b, {
           target: () => (e.dead ? null : e.root.position.clone().setY(e.root.position.y + 0.5)),
           arrive: (bb) => {
@@ -473,9 +592,8 @@ export class GameScene {
         });
       } else if (kind === 'Canary') {
         // Fetcher: bring back nearby tuna (and hearts when you're hurt)
-        cd[kind] = 0.6;
-        const R = 7 + 2 * (lv - 1);
-        let item = null, bd = R, isHeart = false;
+        cd[kind] = R.cd(lv);
+        let item = null, bd = R.range(lv), isHeart = false;
         for (const c of this.world.tunas) {
           if (c.taken || c.claimed) continue;
           const d = Math.hypot(c.base.x - p.pos.x, c.base.z - p.pos.z);
@@ -519,10 +637,10 @@ export class GameScene {
             m = ms;
           }
         }
-        cd[kind] = Math.max(7, 15 - 3 * (lv - 1));
+        cd[kind] = R.cd(lv);
         if (!m || bd < 4) continue;
         const dir = m.base.clone().sub(p.pos).setY(0).normalize();
-        const reach = Math.min(Math.hypot(m.base.x - p.pos.x, m.base.z - p.pos.z) - 1, 9);
+        const reach = Math.min(Math.hypot(m.base.x - p.pos.x, m.base.z - p.pos.z) - 1, R.range(lv));
         const spot = p.pos.clone().addScaledVector(dir, reach).setY(Math.max(p.pos.y, this.world.groundHeight(p.pos.x + dir.x * reach, p.pos.z + dir.z * reach)) + 2.2);
         B.sendOnTask(b, {
           target: () => spot,
@@ -541,7 +659,7 @@ export class GameScene {
           cd[kind] = 2;
           continue;
         }
-        cd[kind] = Math.max(20, 45 - 10 * (lv - 1));
+        cd[kind] = R.cd(lv);
         const carry = new THREE.Mesh(new THREE.PlaneGeometry(0.45, 0.45), new THREE.MeshBasicMaterial({
           map: this.particles.textures.heart, transparent: true, depthWrite: false, side: THREE.DoubleSide,
         }));
@@ -559,7 +677,7 @@ export class GameScene {
       } else if (kind === 'Chickadee') {
         // Guardian: puff up a shield that blocks one hit
         r.shield = 1;
-        cd[kind] = Math.max(15, 35 - 8 * (lv - 1));
+        cd[kind] = R.cd(lv);
         sfx.flutter();
         this.particles.burst('feather', b.pos, 5, { size: 0.22, speed: 1.2, up: 1, life: 0.8, gravity: 0.5, spin: 3 });
         this.hud.toast('🛡 Chickadee puffs up a shield!');

@@ -1,6 +1,8 @@
 import * as THREE from 'three/webgpu';
 import { Cat } from './cat.js';
 import { HEROES } from './heroes.js';
+import { LEVELS } from './levels.js';
+import { Save } from './save.js';
 import { makeSky } from './sky.js';
 import { TextPanel, FONT, frustumHalf, drawPrompts, roundRect, wrapText } from './ui3d.js';
 import { paint, damp, mulberry32, disposeTree } from './util.js';
@@ -175,8 +177,9 @@ export class MenuScene {
   buildCats() {
     const stoneMat = new THREE.MeshStandardMaterial({ vertexColors: true, flatShading: true, roughness: 0.8 });
     const stone = ['#8f88a8', '#7d7696', '#9a93b3'].map((c) => new THREE.Color(c));
+    const silhouette = new THREE.MeshStandardMaterial({ color: '#07060d', emissive: '#1d1640', emissiveIntensity: 0.6, roughness: 1, flatShading: true });
     this.cats = HEROES.map((hero, i) => {
-      const x = i === 0 ? -1.3 : 1.3;
+      const x = (i - (HEROES.length - 1) / 2) * 2.2;
       const ped = new THREE.Mesh(paint(new THREE.CylinderGeometry(0.62, 0.72, 0.35, 8).translate(0, 0.175, 0), (p) => stone[(Math.abs(p.x * 5 + p.z * 3) | 0) % 3]), stoneMat);
       ped.position.set(x, 0, 0);
       ped.castShadow = ped.receiveShadow = true;
@@ -185,8 +188,15 @@ export class MenuScene {
       ring.position.set(x, 0.36, 0);
       const cat = new Cat(hero);
       cat.root.position.set(x, 0.35, 0);
+      if (hero.locked) {
+        // locked heroes are a dark silhouette until unlocked
+        cat.root.traverse((o) => {
+          if (o.isMesh) o.material = silhouette;
+        });
+        ring.material.color.set('#6a6488');
+      }
       this.scene.add(ped, ring, cat.root);
-      return { hero, cat, ring, x, y: 0, vy: 0, scale: 1, yaw: 0 };
+      return { hero, cat, ring, x, y: 0, vy: 0, scale: 1, yaw: 0, shake: 0 };
     });
   }
 
@@ -244,6 +254,24 @@ export class MenuScene {
     });
 
     this.card = new TextPanel(1100, 330, 1.75, (ctx, w, h, hero) => {
+      if (hero.locked) {
+        roundRect(ctx, 6, 6, w - 12, h - 12, 36, 'rgba(22,17,48,0.82)', '#6a6488', 5);
+        ctx.textBaseline = 'alphabetic';
+        ctx.textAlign = 'left';
+        ctx.fillStyle = '#fff';
+        ctx.font = `700 84px ${FONT}`;
+        ctx.fillText('🔒 ???', 48, 112);
+        ctx.fillStyle = '#b9b2e0';
+        ctx.font = `600 36px ${FONT}`;
+        ctx.fillText(hero.title, 48, 162);
+        ctx.fillStyle = '#cfcbe8';
+        ctx.font = `400 30px ${FONT}`;
+        wrapText(ctx, hero.blurb, 48, 214, 560, 38);
+        ctx.fillStyle = '#ffd36a';
+        ctx.font = `600 30px ${FONT}`;
+        wrapText(ctx, hero.unlockText, 660, 120, 400, 40);
+        return;
+      }
       roundRect(ctx, 6, 6, w - 12, h - 12, 36, 'rgba(22,17,48,0.82)', hero.accent, 5);
       ctx.textBaseline = 'alphabetic';
       ctx.textAlign = 'left';
@@ -280,6 +308,35 @@ export class MenuScene {
       ], w / 2, h / 2, 54, device);
     });
 
+    this.levelPanel = new TextPanel(1100, 300, 1.75, (ctx, w, h, idx, hero) => {
+      roundRect(ctx, 6, 6, w - 12, h - 12, 36, 'rgba(22,17,48,0.86)', hero.accent, 5);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#b9b2e0';
+      ctx.font = `600 34px ${FONT}`;
+      ctx.fillText(`${hero.name} · Start at`, w / 2, 56);
+      ctx.fillStyle = '#fff';
+      ctx.font = `700 76px ${FONT}`;
+      ctx.fillText(`◀   Level ${idx + 1}   ▶`, w / 2, 136);
+      ctx.fillStyle = hero.accent;
+      ctx.font = `600 40px ${FONT}`;
+      ctx.fillText(LEVELS[idx].name, w / 2, 202);
+      ctx.fillStyle = '#9f9ac4';
+      ctx.font = `400 26px ${FONT}`;
+      ctx.fillText(idx === 0 ? 'A fresh run' : 'With the upgrades and bird friends you had when you got there', w / 2, 254);
+    });
+    this.levelPrompts = new TextPanel(1400, 90, 1.7, (ctx, w, h, device) => {
+      if (device === 'touch') {
+        drawPrompts(ctx, [{ label: 'Tap the sides to change level' }, { label: 'Tap the middle to play' }], w / 2, h / 2, 54, device);
+        return;
+      }
+      drawPrompts(ctx, [
+        { pad: 'DPAD_LR', key: '← →', label: 'Level' },
+        { pad: 'A', key: 'Enter', label: 'Play' },
+        { pad: 'B', key: 'Esc', label: 'Back' },
+      ], w / 2, h / 2, 54, device);
+    });
+
     this.labels = this.cats.map((c) => {
       const p = new TextPanel(512, 110, 0.85, (ctx, w, h) => {
         ctx.textAlign = 'center';
@@ -288,9 +345,10 @@ export class MenuScene {
         ctx.lineWidth = 10;
         ctx.lineJoin = 'round';
         ctx.strokeStyle = '#1b1338';
-        ctx.strokeText(c.hero.name, w / 2, h / 2);
-        ctx.fillStyle = c.hero.accent;
-        ctx.fillText(c.hero.name, w / 2, h / 2);
+        const label = c.hero.locked ? '???' : c.hero.name;
+        ctx.strokeText(label, w / 2, h / 2);
+        ctx.fillStyle = c.hero.locked ? '#9a94c0' : c.hero.accent;
+        ctx.fillText(label, w / 2, h / 2);
       });
       p.redraw();
       p.mesh.position.set(c.x, 1.75, 0);
@@ -298,7 +356,7 @@ export class MenuScene {
       return p;
     });
 
-    this.hud = [this.logo, this.pressStart, this.header, this.card, this.prompts];
+    this.hud = [this.logo, this.pressStart, this.header, this.card, this.prompts, this.levelPanel, this.levelPrompts];
     for (const p of this.hud) this.camera.add(p.mesh);
     this.logo.redraw();
     this.header.redraw();
@@ -309,6 +367,7 @@ export class MenuScene {
     const d = this.input.device;
     this.pressStart.redraw(d);
     this.prompts.redraw(d);
+    this.levelPrompts.redraw(d);
     this.card.redraw(HEROES[this.sel ?? 0]);
   }
 
@@ -332,8 +391,17 @@ export class MenuScene {
     const ps = fit(this.prompts, 0.95);
     const py = -h + (this.prompts.worldH * ps) / 2 + h * 0.03;
     place(this.prompts, py, ps);
+    place(this.levelPrompts, py, ps);
     const cs = fit(this.card, 0.92);
     place(this.card, py + (this.prompts.worldH * ps) / 2 + (this.card.worldH * cs) / 2 + h * 0.02, cs);
+    place(this.levelPanel, py + (this.prompts.worldH * ps) / 2 + (this.levelPanel.worldH * cs) / 2 + h * 0.02, cs);
+  }
+
+  begin(level) {
+    this.starting = true;
+    this.startTimer = 0.75;
+    this.startLevel = level;
+    this.cats[this.sel].vy = 4.5;
   }
 
   setSel(i) {
@@ -355,9 +423,13 @@ export class MenuScene {
         requestFullscreenLandscape();
       } else if (this.state === 'select') {
         // tap a cat to select it; tap the selected cat (or the card) to start
-        const idx = s.tap.x < 0.5 ? 0 : 1;
+        const idx = Math.min(HEROES.length - 1, Math.floor(s.tap.x * HEROES.length));
         if (s.tap.y > 0.62 || idx === this.sel) s.confirm = true;
         else this.setSel(idx);
+      } else if (this.state === 'levels') {
+        if (s.tap.x < 0.3) s.left = true;
+        else if (s.tap.x > 0.7) s.right = true;
+        else s.confirm = true;
       }
     }
     if (!locked && !this.starting) {
@@ -372,25 +444,44 @@ export class MenuScene {
         if (s.right) this.setSel((this.sel + 1) % HEROES.length);
         if (s.back) this.state = 'title';
         else if (s.confirm) {
-          this.starting = true;
-          this.startTimer = 0.75;
-          this.cats[this.sel].vy = 4.5;
+          const hero = HEROES[this.sel];
+          const c = this.cats[this.sel];
+          if (hero.locked) {
+            c.shake = 0.5; // not yet!
+          } else if (Save.best(hero.id) > 0) {
+            // pick a starting level
+            this.state = 'levels';
+            this.levelSel = Save.best(hero.id);
+            this.levelPanel.redraw(this.levelSel, hero);
+            c.vy = 3;
+          } else this.begin(0);
         }
+      } else if (this.state === 'levels') {
+        const hero = HEROES[this.sel];
+        const max = Save.best(hero.id);
+        if (s.left || s.right) {
+          this.levelSel = (this.levelSel + (s.right ? 1 : max)) % (max + 1);
+          this.levelPanel.redraw(this.levelSel, hero);
+        }
+        if (s.back) this.state = 'select';
+        else if (s.confirm) this.begin(this.levelSel);
       }
     }
     if (this.starting) {
       this.startTimer -= dt;
       if (this.startTimer <= 0 && this.starting !== 'done') {
         this.starting = 'done';
-        this.onStart(HEROES[this.sel]);
+        this.onStart(HEROES[this.sel], this.startLevel);
       }
     }
 
     // Camera
-    const sel = this.state === 'select';
+    const levels = this.state === 'levels';
+    const sel = this.state === 'select' || levels;
     let tp, tl;
     if (sel) {
-      const back = this.camera.aspect < 1 ? 4.4 / Math.max(0.5, this.camera.aspect) * 0.75 : 4.4;
+      const base = 3.2 + HEROES.length * 0.85;
+      const back = this.camera.aspect < 1.3 ? base * Math.min(1.8, 1.3 / Math.max(0.5, this.camera.aspect)) : base;
       tp = this._tp ??= new THREE.Vector3();
       tl = this._tl ??= new THREE.Vector3();
       tp.set(0, 1.5, back);
@@ -417,7 +508,8 @@ export class MenuScene {
     this.logo.opacity = damp(this.logo.opacity, sel ? 0 : 1, fadeK, dt);
     this.pressBase = damp(this.pressBase ?? 0, sel ? 0 : 1, fadeK, dt);
     this.pressStart.opacity = this.pressBase * (0.6 + 0.4 * Math.sin(t * 3.5));
-    for (const p of [this.header, this.card, this.prompts]) p.opacity = damp(p.opacity, sel && !this.starting ? 1 : 0, fadeK, dt);
+    for (const p of [this.header, this.card, this.prompts]) p.opacity = damp(p.opacity, sel && !levels && !this.starting ? 1 : 0, fadeK, dt);
+    for (const p of [this.levelPanel, this.levelPrompts]) p.opacity = damp(p.opacity, levels && !this.starting ? 1 : 0, fadeK, dt);
     this.layoutUI();
 
     // Cats
@@ -431,7 +523,9 @@ export class MenuScene {
         c.vy = 0;
       }
       c.scale = damp(c.scale, sel && !chosen ? 0.88 : 1, 6, dt);
-      c.yaw = damp(c.yaw, sel && !chosen ? (i === 0 ? 0.45 : -0.45) : 0, 5, dt);
+      c.yaw = damp(c.yaw, sel && !chosen ? -Math.sign(c.x) * 0.45 : 0, 5, dt);
+      c.shake = Math.max(0, c.shake - dt);
+      c.cat.root.position.x = c.x + Math.sin(c.shake * 60) * c.shake * 0.25;
       c.cat.root.position.y = 0.35 + c.y;
       c.cat.root.scale.setScalar(c.scale);
       c.cat.root.rotation.y = c.yaw;

@@ -73,44 +73,196 @@ export class Enemies {
     this.scene = scene;
     this.world = world;
     this.list = [];
-    const E = world.level.enemy;
+    this.levelIndex = levelIndex;
+    this.waves = [];
+    this.waveGeo = new THREE.RingGeometry(0.9, 1, 48).rotateX(-Math.PI / 2);
     world.camps.forEach((camp, ci) => {
-      for (const sp of camp.spawns) {
-        const model = sp.type === 'blob' ? buildBlob(E.blob) : buildBeetle(E.beetle);
-        const y = world.groundHeight(sp.x, sp.z);
-        model.root.position.set(sp.x, y, sp.z);
-        scene.add(model.root);
-        this.list.push({
-          ...model, type: sp.type, camp: ci,
-          pos: new THREE.Vector3(sp.x, y, sp.z), home: new THREE.Vector3(sp.x, y, sp.z),
-          vel: new THREE.Vector3(), yaw: Math.random() * 6, hp: (sp.type === 'blob' ? 2 : 3) + E.hp - 1,
-          state: 'idle', timer: Math.random() * 2, hopY: 0, hopV: 0, flash: 0, stun: 0, dead: false, t: Math.random() * 10,
-          speedMul: 1 + levelIndex * 0.1,
-        });
-      }
+      for (const sp of camp.spawns) this.spawn(sp, ci);
     });
+  }
+
+  spawn(sp, ci) {
+    const E = this.world.level.enemy;
+    const isBoss = sp.type === 'boss';
+    const kind = isBoss ? (sp.boss === 'gloom' ? 'blob' : 'beetle') : sp.type;
+    const model = kind === 'blob' ? buildBlob(isBoss ? E.bossColor ?? E.blob : E.blob) : buildBeetle(isBoss ? E.bossColor ?? E.beetle : E.beetle);
+    const y = this.world.groundHeight(sp.x, sp.z);
+    model.root.position.set(sp.x, y, sp.z);
+    this.scene.add(model.root);
+    const e = {
+      ...model, type: kind, camp: ci,
+      pos: new THREE.Vector3(sp.x, y, sp.z), home: new THREE.Vector3(sp.x, y, sp.z),
+      vel: new THREE.Vector3(), yaw: Math.random() * 6, hp: (kind === 'blob' ? 2 : 3) + E.hp - 1,
+      state: 'idle', timer: Math.random() * 2, hopY: 0, hopV: 0, flash: 0, stun: 0, dead: false, t: Math.random() * 10,
+      speedMul: 1 + this.levelIndex * 0.06, scale: 1,
+    };
+    if (isBoss) {
+      const BOSS = { thornback: { name: 'Thornback', hp: 14, scale: 3 }, gloom: { name: 'The Gloom King', hp: 20, scale: 3.2 } }[sp.boss];
+      Object.assign(e, { boss: sp.boss, name: BOSS.name, hp: BOSS.hp, scale: BOSS.scale, cycle: 0, hops: 0 });
+      e.radius *= BOSS.scale * 0.85;
+      e.height *= BOSS.scale;
+      model.root.scale.setScalar(BOSS.scale);
+    }
+    e.maxHp = e.hp;
+    this.list.push(e);
+    return e;
+  }
+
+  /** The boss you're currently fighting (for the HUD health bar), or null. */
+  activeBoss() {
+    return this.list.find((e) => e.boss && e.engaged && e.dead !== true) ?? null;
+  }
+
+  shockwave(x, y, z, max) {
+    const mesh = new THREE.Mesh(this.waveGeo, new THREE.MeshBasicMaterial({
+      color: '#ffcf6a', transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+    }));
+    mesh.position.set(x, y + 0.15, z);
+    this.scene.add(mesh);
+    this.waves.push({ x, y, z, r: 1, max, mesh, hit: false });
+  }
+
+  /** Boss behaviour; sets velocity/state. Returns extra minions to spawn. */
+  updateBoss(e, dt, p, aggro, spawns) {
+    const spd = e.speedMul;
+    const dx = p.x - e.pos.x, dz = p.z - e.pos.z, dist = Math.hypot(dx, dz) || 1;
+    if (aggro) e.engaged = true;
+    if (!e.engaged) {
+      e.vel.multiplyScalar(Math.exp(-6 * dt));
+      return;
+    }
+    const face = (k = 6) => {
+      e.yaw = dampAngle(e.yaw, Math.atan2(dx, dz), k, dt);
+    };
+    if (e.boss === 'thornback') {
+      if (e.state === 'idle') {
+        e.state = 'windup';
+        e.timer = 0.9;
+      } else if (e.state === 'windup') {
+        e.vel.set(0, 0, 0);
+        face(8);
+        if (e.timer <= 0) {
+          e.cycle++;
+          if (e.cycle % 3 === 0) {
+            // leap at you; the landing sends out a shockwave you need to jump over
+            e.state = 'leap';
+            e.hopV = 11;
+            const sp = Math.min(dist, 10) / 1.1;
+            e.vel.set((dx / dist) * sp, 0, (dz / dist) * sp);
+          } else {
+            e.state = 'charge';
+            e.timer = 1.2;
+            e.vel.set(Math.sin(e.yaw) * 12 * spd, 0, Math.cos(e.yaw) * 12 * spd);
+          }
+        }
+      } else if (e.state === 'charge') {
+        if (e.timer <= 0) {
+          e.state = 'rest';
+          e.timer = 0.8;
+        }
+      } else if (e.state === 'leap') {
+        if (e.justLanded) {
+          this.shockwave(e.pos.x, e.pos.y, e.pos.z, 13);
+          e.state = 'dazed';
+          e.timer = 2.2;
+          e.vel.set(0, 0, 0);
+        }
+      } else if (e.state === 'rest') {
+        e.vel.multiplyScalar(Math.exp(-6 * dt));
+        if (e.timer <= 0) {
+          e.state = 'windup';
+          e.timer = 0.7;
+        }
+      } else if (e.state === 'dazed') {
+        e.vel.multiplyScalar(Math.exp(-8 * dt));
+        if (e.timer <= 0) {
+          e.state = 'windup';
+          e.timer = 0.9;
+        }
+      }
+      if (!e.split1 && e.hp <= e.maxHp / 2) {
+        e.split1 = true;
+        spawns.push('blob', 'blob');
+      }
+    } else {
+      // The Gloom King: big hops, shockwave on every landing, splits as it weakens
+      if (e.state === 'idle') {
+        e.state = 'hop';
+        e.timer = 0.4;
+      } else if (e.state === 'hop') {
+        if (e.justLanded) {
+          this.shockwave(e.pos.x, e.pos.y, e.pos.z, 9);
+          e.vel.set(0, 0, 0);
+          if (e.hops % 4 === 0) {
+            e.state = 'dazed';
+            e.timer = 2.0;
+          }
+        }
+        if (e.hopY <= 0 && e.hopV <= 0 && e.timer <= 0) {
+          e.hops++;
+          e.hopV = 10;
+          face(20);
+          const sp = Math.min(dist, 8);
+          e.vel.set((dx / dist) * sp * spd, 0, (dz / dist) * sp * spd);
+          e.timer = 1.4 / spd;
+        }
+      } else if (e.state === 'dazed') {
+        if (e.timer <= 0) {
+          e.state = 'hop';
+          e.timer = 0.3;
+        }
+      }
+      for (const [k, frac] of [['split1', 2 / 3], ['split2', 1 / 3]]) {
+        if (!e[k] && e.hp <= e.maxHp * frac) {
+          e[k] = true;
+          spawns.push('blob', 'blob');
+        }
+      }
+    }
   }
 
   alive(campIndex) {
     return this.list.filter((e) => !e.dead && e.camp === campIndex).length;
   }
 
-  /** Claw swipe from the player. Returns enemies hit. */
-  swipe(player) {
+  /** Hit every enemy within `radius` of (x, z) at roughly height y. Returns enemies hit. */
+  hitAt(x, z, y, radius, dmg, kx, kz) {
     const hits = [];
-    const fx = Math.sin(player.facing), fz = Math.cos(player.facing);
-    const cx = player.pos.x + fx * 0.8, cz = player.pos.z + fz * 0.8;
     for (const e of this.list) {
       if (e.dead) continue;
-      const d = Math.hypot(e.pos.x - cx, e.pos.z - cz);
-      if (d > 0.9 + e.radius || Math.abs(e.pos.y + e.hopY - player.pos.y) > 1.4) continue;
-      this.damage(e, 1, fx, fz);
+      const d = Math.hypot(e.pos.x - x, e.pos.z - z);
+      if (d > radius + e.radius || Math.abs(e.pos.y + e.hopY - y) > 1.4 + (e.boss ? 1.5 : 0)) continue;
+      this.damage(e, dmg, kx, kz);
       hits.push(e);
     }
     return hits;
   }
 
+  /** Nearest living enemy within range of pos, or null. */
+  nearest(pos, range) {
+    let best = null, bd = range;
+    for (const e of this.list) {
+      if (e.dead) continue;
+      const d = Math.hypot(e.pos.x - pos.x, e.pos.z - pos.z);
+      if (d < bd && Math.abs(e.pos.y - pos.y) < 3) {
+        bd = d;
+        best = e;
+      }
+    }
+    return best;
+  }
+
   damage(e, n, kx, kz) {
+    if (e.boss) {
+      // bosses barely budge, but take double damage while dazed
+      e.hp -= e.state === 'dazed' ? n * 2 : n;
+      e.flash = 0.18;
+      e.vel.x += kx * 1.5;
+      e.vel.z += kz * 1.5;
+      e.engaged = true;
+      if (e.hp <= 0) e.dead = 'dying';
+      return;
+    }
     e.hp -= n;
     e.flash = 0.18;
     e.stun = 0.45;
@@ -152,7 +304,18 @@ export class Enemies {
       e.flash -= dt;
       let moving = false;
 
-      if (e.stun > 0) {
+      if (e.boss) {
+        this.updateBoss(e, dt, p, playerInCamp && !player.climb, this.pendingSpawns ??= []);
+        if (this.pendingSpawns.length) {
+          for (const type of this.pendingSpawns.splice(0)) {
+            const a = Math.random() * Math.PI * 2;
+            const m = this.spawn({ type, x: e.pos.x + Math.cos(a) * 3, z: e.pos.z + Math.sin(a) * 3 }, e.camp);
+            m.hopV = 6;
+            m.state = 'idle';
+          }
+        }
+        moving = e.state === 'charge';
+      } else if (e.stun > 0) {
         // knocked back
       } else if (e.type === 'blob') {
         if (e.hopY <= 0 && e.timer <= 0) {
@@ -232,17 +395,19 @@ export class Enemies {
         }
       }
       // don't stand inside the cage pedestal
-      const cd = Math.hypot(e.pos.x - camp.x, e.pos.z - camp.z);
+      const cd = Math.hypot(e.pos.x - camp.cx, e.pos.z - camp.cz);
       if (cd < 1.4 + e.radius) {
         const k = (1.4 + e.radius) / (cd || 1);
-        e.pos.x = camp.x + (e.pos.x - camp.x) * k;
-        e.pos.z = camp.z + (e.pos.z - camp.z) * k;
+        e.pos.x = camp.cx + (e.pos.x - camp.cx) * k;
+        e.pos.z = camp.cz + (e.pos.z - camp.cz) * k;
       }
       e.pos.y = g(e.pos.x, e.pos.z);
+      e.justLanded = false;
       if (e.hopV !== 0 || e.hopY > 0) {
         e.hopY += e.hopV * dt;
         e.hopV -= 20 * dt;
         if (e.hopY <= 0) {
+          e.justLanded = e.hopV < -1;
           e.hopY = 0;
           e.hopV = 0;
         }
@@ -254,8 +419,8 @@ export class Enemies {
       if (dist < e.radius + player.radius + 0.1 && dy > -1 && dy < e.height + 0.2) {
         if (player.vel.y < -1 && dy > e.height * 0.45) {
           // stomp!
-          this.damage(e, 2, 0, 0);
-          player.vel.y = 9;
+          this.damage(e, e.boss ? 1 : 2, 0, 0);
+          player.vel.y = e.boss ? 11 : 9;
           out.stomped = true;
         } else if (!out.hurt) {
           out.hurt = e.pos.clone();
@@ -274,10 +439,29 @@ export class Enemies {
         e.body.position.y = e.state === 'windup' ? 0.05 : 0;
         e.legs.forEach((l, i) => { l.rotation.y = moving ? Math.sin(e.t * 22 + i * 1.7) * 0.5 : 0; });
       }
+      if (e.boss && e.state === 'dazed') e.body.rotation.z = Math.sin(e.t * 6) * 0.15;
       const fl = e.flash > 0 ? 1.2 : e.state === 'windup' ? 0.35 + Math.sin(e.t * 30) * 0.3 : 0;
       for (const m of e.mats) {
         m.emissiveIntensity = fl;
         m.emissive.set(e.state === 'windup' && e.flash <= 0 ? '#ff2a1a' : '#ffffff');
+      }
+    }
+    // expanding shockwave rings: jump over them!
+    for (let i = this.waves.length - 1; i >= 0; i--) {
+      const w = this.waves[i];
+      w.r += 10 * dt;
+      w.mesh.scale.set(w.r, 1, w.r);
+      w.mesh.material.opacity = 0.9 * (1 - w.r / w.max);
+      const d = Math.hypot(p.x - w.x, p.z - w.z);
+      const onGround = p.y - g(p.x, p.z) < 0.45 && player.grounded;
+      if (!w.hit && onGround && Math.abs(d - w.r) < 0.6 && Math.abs(p.y - w.y) < 1.5) {
+        w.hit = true;
+        out.hurt = new THREE.Vector3(w.x, w.y, w.z);
+      }
+      if (w.r >= w.max) {
+        this.scene.remove(w.mesh);
+        w.mesh.material.dispose();
+        this.waves.splice(i, 1);
       }
     }
     return out;

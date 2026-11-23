@@ -1,7 +1,8 @@
 import * as THREE from 'three/webgpu';
 import { Input } from './input.js';
 import { MenuScene } from './menu.js';
-import { GameScene, newRun } from './game.js';
+import { GameScene, newRun, runFrom } from './game.js';
+import { Save } from './save.js';
 import { loadFonts } from './ui3d.js';
 import { playMusic, onAudioState, audioReady } from './audio.js';
 import { IS_TOUCH, LITE } from './device.js';
@@ -46,14 +47,15 @@ let run = null;
 /** Build the level for run.level and swap it in (called inside a fade). */
 async function loadLevel() {
   game?.dispose();
+  Save.levelStarted(run);
   game = new GameScene(input, run, renderer.domElement, {
     onQuit: () => transition(quitGame),
     onNext: () => transition(() => {
       run.level++;
       return loadLevel();
     }),
-    onRetry: () => transition(() => {
-      run = newRun(run.hero);
+    onRetry: (kind) => transition(() => {
+      run = runFrom(run.hero, kind === 'victory' ? 0 : run.level);
       return loadLevel();
     }),
   });
@@ -63,8 +65,8 @@ async function loadLevel() {
 }
 
 const menu = new MenuScene(input, {
-  onStart: (hero) => transition(() => {
-    run = newRun(hero);
+  onStart: (hero, level = 0) => transition(() => {
+    run = runFrom(hero, level);
     return loadLevel();
   }),
 });
@@ -119,6 +121,7 @@ window.feluna = {
   get active() { return active; },
   get game() { return game; },
   get run() { return run; },
+  save: Save,
   /** Debug: jump straight to a level, e.g. feluna.warp(2) */
   warp: (i, heroIndex = 0) => transition(async () => {
     const { HEROES } = await import('./heroes.js');

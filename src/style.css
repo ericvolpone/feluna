@@ -276,3 +276,36 @@ body.touch #minimap { width: 100px; height: 100px; top: calc(64px + env(safe-are
 /* in-game the top-right belongs to the minimap */
 body.ingame #sound-hint { right: auto; top: auto; left: calc(12px + env(safe-area-inset-left)); bottom: 52px; }
 body.ingame.touch #sound-hint { bottom: calc(10px + env(safe-area-inset-bottom)); }
+
+/* attack cooldown sweep on the touch button */
+.tbtn.claw::after {
+  content: ''; position: absolute; inset: -3px; border-radius: 50%; pointer-events: none;
+  background: conic-gradient(rgba(10, 8, 30, 0.6) calc((1 - var(--cd, 1)) * 360deg), transparent 0);
+}
+.tbtn.claw.cooling { color: rgba(255, 255, 255, 0.6); }
+
+/* flock bar */
+#hud-flock { position: absolute; top: 100px; left: 16px; display: flex; flex-wrap: wrap; gap: 6px; max-width: calc(100% - 200px); }
+.fb {
+  display: flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600;
+  background: var(--panel); border: 2px solid rgba(255, 255, 255, 0.18); border-radius: 999px; padding: 2px 9px 2px 4px;
+}
+.fb.silver { border-color: #d6dde8; box-shadow: 0 0 6px rgba(214, 221, 232, 0.6); }
+.fb.gold { border-color: #ffd36a; box-shadow: 0 0 8px rgba(255, 211, 106, 0.7); }
+.fb-dot { width: 14px; height: 14px; border-radius: 50%; background: var(--c); display: inline-block; border: 2px solid rgba(255, 255, 255, 0.7); }
+.stars { color: #ffd36a; letter-spacing: -1px; }
+#pause-flock .fb-dot { width: 11px; height: 11px; vertical-align: -1px; margin-right: 4px; }
+#pause-flock small.next { color: #9fe6b0; }
+#pause-flock small.foot { margin-top: 2px; }
+body.touch #hud-flock { top: calc(92px + env(safe-area-inset-top)); left: calc(12px + env(safe-area-inset-left)); max-width: calc(100% - 140px); }
+body.touch .fb-role { display: none; }
+body.touch .fb { padding: 1px 6px 1px 3px; font-size: 11px; }
+
+/* boss health */
+#boss-bar {
+  position: absolute; top: 140px; left: 50%; transform: translateX(-50%); width: min(420px, 50vw);
+  text-align: center; font-weight: 700; font-size: 16px; text-shadow: 0 2px 0 var(--ink);
+}
+#boss-bar .track { height: 12px; border-radius: 99px; background: rgba(22, 17, 48, 0.8); border: 2px solid rgba(255, 255, 255, 0.4); overflow: hidden; margin-top: 3px; }
+#boss-bar i { display: block; height: 100%; background: linear-gradient(90deg, #ff4f6a, #ffb36a); transition: width 0.2s; }
+body.touch #boss-bar { top: calc(118px + env(safe-area-inset-top)); width: 40vw; font-size: 13px; }
