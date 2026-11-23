@@ -29,7 +29,7 @@ function notify() {
   for (const f of listeners) f(audioReady());
   if (audioReady() && wanted && !current) startMusic(wanted);
 }
-for (const ev of ['pointerdown', 'keydown', 'touchstart']) addEventListener(ev, unlock, { capture: true });
+for (const ev of ['pointerdown', 'keydown', 'touchstart', 'touchend', 'click']) addEventListener(ev, unlock, { capture: true });
 
 export const audioReady = () => !!ctx && ctx.state === 'running';
 export const onAudioState = (f) => listeners.add(f);

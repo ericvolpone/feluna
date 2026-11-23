@@ -205,8 +205,10 @@ export class Player {
 
     // Jump (buffered + coyote + variable height), then flutter air jumps
     const jumpV = stats.jump * mods.jumpMul;
-    this.jumpBuffer = s.jumpPressed ? BUFFER : this.jumpBuffer - dt;
-    this.coyote = this.grounded ? COYOTE : this.coyote - dt;
+    // touch gets a little extra forgiveness on jump timing
+    const ease = mods.touch ? 1.6 : 1;
+    this.jumpBuffer = s.jumpPressed ? BUFFER * ease : this.jumpBuffer - dt;
+    this.coyote = this.grounded ? COYOTE * ease : this.coyote - dt;
     if (this.grounded) this.airJumpsLeft = mods.airJumps;
     if (this.jumpBuffer > 0 && this.coyote > 0) {
       this.vel.y = jumpV;

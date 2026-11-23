@@ -7,6 +7,17 @@ import { paint, damp, mulberry32, disposeTree } from './util.js';
 
 const HUD_DIST = 2;
 
+/** On phones, go fullscreen and lock landscape when supported (Android Chrome). */
+function requestFullscreenLandscape() {
+  try {
+    const el = document.documentElement;
+    if (document.fullscreenElement || !el.requestFullscreen) return;
+    el.requestFullscreen({ navigationUI: 'hide' })
+      .then(() => screen.orientation?.lock?.('landscape').catch(() => {}))
+      .catch(() => {});
+  } catch { /* not supported (e.g. iPhone Safari) */ }
+}
+
 /**
  * Title screen and hero select, rendered entirely in the 3D scene:
  * a floating island under a moonlit sky with both cats on pedestals.
@@ -217,7 +228,7 @@ export class MenuScene {
     });
 
     this.pressStart = new TextPanel(1024, 110, 1.3, (ctx, w, h, device) => {
-      drawPrompts(ctx, [{ pad: 'A', key: 'Enter', label: 'Press to Start' }], w / 2, h / 2, 64, device, '#fff4d8');
+      drawPrompts(ctx, [{ pad: 'A', key: 'Enter', label: 'Press to Start', touchLabel: 'Tap to Start' }], w / 2, h / 2, 64, device, '#fff4d8');
     });
 
     this.header = new TextPanel(1024, 120, 1.3, (ctx, w, h) => {
@@ -258,6 +269,10 @@ export class MenuScene {
     });
 
     this.prompts = new TextPanel(1400, 90, 1.7, (ctx, w, h, device) => {
+      if (device === 'touch') {
+        drawPrompts(ctx, [{ label: 'Tap a cat to choose' }, { label: 'Tap again to play' }], w / 2, h / 2, 54, device);
+        return;
+      }
       drawPrompts(ctx, [
         { pad: 'DPAD_LR', key: '← →', label: 'Choose' },
         { pad: 'A', key: 'Enter', label: 'Select' },
@@ -334,6 +349,17 @@ export class MenuScene {
     const s = this.input.state;
     const t = this.t;
 
+    if (!locked && !this.starting && s.tap) {
+      if (this.state === 'title') {
+        s.confirm = true;
+        requestFullscreenLandscape();
+      } else if (this.state === 'select') {
+        // tap a cat to select it; tap the selected cat (or the card) to start
+        const idx = s.tap.x < 0.5 ? 0 : 1;
+        if (s.tap.y > 0.62 || idx === this.sel) s.confirm = true;
+        else this.setSel(idx);
+      }
+    }
     if (!locked && !this.starting) {
       if (this.state === 'title') {
         if (s.confirm) {

@@ -134,7 +134,7 @@ function swirlTexture(color) {
 }
 
 // ── Level builder ─────────────────────────────────────────────
-export function buildWorld(level, seed = 1) {
+export function buildWorld(level, seed = 1, { lite = false } = {}) {
   const rand = mulberry32(seed * 7919 + level.id.charCodeAt(0) * 131);
   const R = WORLD_R;
   const T = {};
@@ -839,7 +839,7 @@ export function buildWorld(level, seed = 1) {
   }
   // backdrop ring on the hills (no collision — the player is clamped inside)
   if (!F.city) {
-    for (let i = 0; i < 150; i++) {
+    for (let i = 0; i < (lite ? 90 : 150); i++) {
       const a = rand() * Math.PI * 2, r = R + 1.5 + rand() * 24;
       const x = Math.cos(a) * r, z = Math.sin(a) * r;
       if (level.id === 'desert' || level.id === 'lava') {
@@ -934,9 +934,9 @@ export function buildWorld(level, seed = 1) {
     group.add(mesh);
   };
   const [th, ts, tl] = level.pal.tuft;
-  scatter(new THREE.ConeGeometry(0.07, 0.36, 3), F.grass, 0.14, () => new THREE.Color().setHSL(th + rand() * 0.06, ts, tl + rand() * 0.12));
+  scatter(new THREE.ConeGeometry(0.07, 0.36, 3), Math.round(F.grass * (lite ? 0.35 : 1)), 0.14, () => new THREE.Color().setHSL(th + rand() * 0.06, ts, tl + rand() * 0.12));
   const flowerCols = ['#ff8fb1', '#ffd85c', '#ffffff', '#b99cff', '#7fc8ff'].map(C);
-  scatter(new THREE.IcosahedronGeometry(0.09, 0), F.flowers, 0.12, () => flowerCols[Math.floor(rand() * flowerCols.length)]);
+  scatter(new THREE.IcosahedronGeometry(0.09, 0), Math.round(F.flowers * (lite ? 0.5 : 1)), 0.12, () => flowerCols[Math.floor(rand() * flowerCols.length)]);
 
   // ── Collectibles ──
   const moonMat = new THREE.MeshStandardMaterial({ color: '#a8ecff', emissive: '#3fbfff', emissiveIntensity: 1.4, roughness: 0.15, flatShading: true });

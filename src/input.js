@@ -5,7 +5,11 @@
  * Call poll() once per frame; read `state`. Edge-triggered fields (`*Pressed`,
  * confirm/back/left/right/up/down/pause) are true for exactly one frame.
  */
+import { TouchControls } from './touch.js';
+import { IS_TOUCH } from './device.js';
+
 const DEAD = 0.18;
+const TOUCH_LOOK = 2.4; // touch-drag pixels feel smaller than mouse pixels
 
 function stick(x = 0, y = 0) {
   const m = Math.hypot(x, y);
@@ -31,9 +35,29 @@ export class Input {
     this.sprintLatch = false;
     this.mouseDown = false;
     this.mousePressed = false;
-    this.device = 'keyboard';
+    this.device = IS_TOUCH ? 'touch' : 'keyboard';
     this.onDeviceChange = null;
+    this.touch = new TouchControls();
+    this.tap = null;
     this.state = this.blank();
+
+    // Any finger on the screen switches to touch mode; short taps on the canvas
+    // drive the in-canvas menus.
+    this.touchStarts = new Map();
+    addEventListener('pointerdown', (e) => {
+      if (e.pointerType !== 'touch') return;
+      this.lastTouch = performance.now();
+      this.setDevice('touch');
+      this.touchStarts.set(e.pointerId, { x: e.clientX, y: e.clientY, t: performance.now(), target: e.target });
+    }, { capture: true });
+    addEventListener('pointerup', (e) => {
+      const st = this.touchStarts.get(e.pointerId);
+      this.touchStarts.delete(e.pointerId);
+      if (!st || st.target !== el) return;
+      if (performance.now() - st.t < 350 && Math.hypot(e.clientX - st.x, e.clientY - st.y) < 18) {
+        this.tap = { x: e.clientX / innerWidth, y: e.clientY / innerHeight };
+      }
+    }, { capture: true });
 
     addEventListener('keydown', (e) => {
       if (PREVENT.has(e.code)) e.preventDefault();
@@ -51,6 +75,8 @@ export class Input {
       }
     });
     addEventListener('mousedown', (e) => {
+      // browsers send emulated mouse events right after a tap — ignore those
+      if (performance.now() - (this.lastTouch ?? -1e9) < 1000) return;
       this.setDevice('keyboard');
       if (e.button === 0 && document.pointerLockElement === el) {
         this.mouseDown = true;
@@ -69,6 +95,7 @@ export class Input {
       claw: false, clawPressed: false, meowPressed: false,
       confirm: false, back: false, pause: false,
       left: false, right: false, up: false, down: false,
+      tap: null, touch: false, lookTouch: false,
     };
   }
 
@@ -159,6 +186,26 @@ export class Input {
       this.prevStickY = sy;
       this.prevPad = pad.buttons.map((x) => x.pressed);
     }
+
+    // Touch
+    if (this.touch.visible) {
+      const t = this.touch.read();
+      s.move.x += t.move.x;
+      s.move.y += t.move.y;
+      s.mouse.x += t.lookDx * TOUCH_LOOK;
+      s.mouse.y += t.lookDy * TOUCH_LOOK;
+      s.lookTouch = t.looking;
+      s.sprint ||= t.sprint;
+      s.jump ||= t.jump;
+      s.jumpPressed ||= t.jumpPressed;
+      s.claw ||= t.claw;
+      s.clawPressed ||= t.clawPressed;
+      s.meowPressed ||= t.meowPressed;
+      s.pause ||= t.pause;
+    }
+    s.touch = this.device === 'touch';
+    s.tap = this.tap;
+    this.tap = null;
 
     const m = Math.hypot(s.move.x, s.move.y);
     if (m > 1) {

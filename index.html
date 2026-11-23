@@ -2,7 +2,10 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="theme-color" content="#0b0a22" />
     <title>Feluna</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -53,6 +56,16 @@
         </div>
       </div>
     </div>
+    <div id="touch" class="hidden">
+      <div class="zone left"></div>
+      <div class="zone right"></div>
+      <div class="stick"><div class="knob"></div></div>
+      <button class="tbtn jump" data-btn="jump">Jump</button>
+      <button class="tbtn claw" data-btn="claw">Claws</button>
+      <button class="tbtn meow" data-btn="meow">Meow</button>
+      <button class="tbtn pause" data-btn="pause" aria-label="Pause">❚❚</button>
+    </div>
+    <div id="rotate"><div>📱↻<p>Turn your phone sideways to play</p></div></div>
     <div id="sound-hint" class="hidden">🔈 Click anywhere to turn on sound</div>
     <div id="fade"></div>
     <div id="backend"></div>

@@ -4,12 +4,15 @@ import { MenuScene } from './menu.js';
 import { GameScene, newRun } from './game.js';
 import { loadFonts } from './ui3d.js';
 import { playMusic, onAudioState, audioReady } from './audio.js';
+import { IS_TOUCH, LITE } from './device.js';
+
+document.body.classList.toggle('touch', IS_TOUCH);
 
 const loading = document.getElementById('loading');
 
 // WebGPURenderer uses WebGPU where available and transparently falls back to WebGL2.
 const renderer = new THREE.WebGPURenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, LITE ? 1.5 : 2));
 renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.05;
@@ -80,6 +83,7 @@ function quitGame() {
 
 // Sound needs one click/keypress (controller buttons don't count in browsers)
 const soundHint = document.getElementById('sound-hint');
+if (IS_TOUCH) soundHint.textContent = '🔈 Tap to turn on sound';
 soundHint.classList.toggle('hidden', audioReady());
 onAudioState((ok) => soundHint.classList.toggle('hidden', ok));
 

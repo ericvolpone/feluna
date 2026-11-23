@@ -65,6 +65,7 @@ const PAD_COLORS = { A: '#4fc46a', B: '#e8545a', X: '#4d93f0', Y: '#f2c43c' };
 
 /** Draws a controller button or keyboard key glyph; returns its width. */
 export function drawGlyph(ctx, x, y, size, item, device) {
+  if (device === 'touch' && !item.touch) return 0;
   ctx.save();
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -88,7 +89,7 @@ export function drawGlyph(ctx, x, y, size, item, device) {
     ctx.font = `700 ${size * 0.6}px ${FONT}`;
     ctx.fillText(item.pad, x + size / 2, y + size * 0.03);
   } else {
-    const label = device === 'gamepad' ? item.pad : item.key;
+    const label = device === 'gamepad' ? item.pad : device === 'touch' ? item.touch : item.key;
     ctx.font = `600 ${size * 0.5}px ${FONT}`;
     w = Math.max(size, ctx.measureText(label).width + size * 0.6);
     roundRect(ctx, x, y - size / 2, w, size, size * 0.22, '#f2efff', '#8b84c9');
@@ -104,9 +105,10 @@ export function drawPrompts(ctx, items, cx, cy, size, device, color = '#eae6ff')
   ctx.save();
   ctx.font = `600 ${size * 0.62}px ${FONT}`;
   const gap = size * 0.3, spacing = size * 1.1;
+  const label = (it) => (device === 'touch' && it.touchLabel) || it.label;
   const widths = items.map((it) => {
     const g = measureGlyph(ctx, size, it, device);
-    return g + gap + ctx.measureText(it.label).width;
+    return g + (g ? gap : 0) + ctx.measureText(label(it)).width;
   });
   let x = cx - (widths.reduce((a, b) => a + b, 0) + spacing * (items.length - 1)) / 2;
   items.forEach((it, i) => {
@@ -117,7 +119,7 @@ export function drawPrompts(ctx, items, cx, cy, size, device, color = '#eae6ff')
     ctx.textBaseline = 'middle';
     ctx.shadowColor = 'rgba(0,0,0,0.6)';
     ctx.shadowBlur = 8;
-    ctx.fillText(it.label, x + gw + gap, cy + size * 0.03);
+    ctx.fillText(label(it), x + gw + (gw ? gap : 0), cy + size * 0.03);
     ctx.shadowBlur = 0;
     x += widths[i] + spacing;
   });
@@ -125,11 +127,12 @@ export function drawPrompts(ctx, items, cx, cy, size, device, color = '#eae6ff')
 }
 
 function measureGlyph(ctx, size, item, device) {
+  if (device === 'touch' && !item.touch) return 0;
   if (device === 'gamepad' && item.pad === 'DPAD_LR') return size * 1.7;
   if (device === 'gamepad' && PAD_COLORS[item.pad]) return size;
   ctx.save();
   ctx.font = `600 ${size * 0.5}px ${FONT}`;
-  const w = Math.max(size, ctx.measureText(device === 'gamepad' ? item.pad : item.key).width + size * 0.6);
+  const w = Math.max(size, ctx.measureText(device === 'gamepad' ? item.pad : device === 'touch' ? item.touch : item.key).width + size * 0.6);
   ctx.restore();
   return w;
 }

@@ -8,7 +8,8 @@ import { Enemies } from './enemies.js';
 import { Particles } from './particles.js';
 import { Hud } from './hud.js';
 import { sfx, playMusic } from './audio.js';
-import { clamp, damp, disposeTree } from './util.js';
+import { clamp, damp, dampAngle, disposeTree } from './util.js';
+import { LITE } from './device.js';
 
 const MOUSE_SENS = 0.0024;
 const STICK_YAW = 2.8;
@@ -43,20 +44,20 @@ export class GameScene {
     const L = this.level;
 
     this.scene = new THREE.Scene();
-    this.camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 260);
-    this.scene.fog = new THREE.Fog(...L.fog);
+    this.camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, LITE ? 210 : 260);
+    this.scene.fog = new THREE.Fog(L.fog[0], L.fog[1] * (LITE ? 0.85 : 1), L.fog[2] * (LITE ? 0.85 : 1));
     this.sky = makeSky({ ...L.sky, radius: 200 });
     this.scene.add(this.sky);
     this.scene.add(new THREE.HemisphereLight(L.light.sky, L.light.ground, L.light.hemi));
     this.sun = new THREE.DirectionalLight(L.light.sun, L.light.sunI);
     this.sun.castShadow = true;
-    this.sun.shadow.mapSize.set(2048, 2048);
+    this.sun.shadow.mapSize.setScalar(LITE ? 1024 : 2048);
     Object.assign(this.sun.shadow.camera, { left: -22, right: 22, top: 22, bottom: -22, near: 1, far: 100 });
     this.sun.shadow.bias = -0.0004;
     this.sun.shadow.normalBias = 0.03;
     this.scene.add(this.sun, this.sun.target);
 
-    this.world = buildWorld(L, run.level + 1);
+    this.world = buildWorld(L, run.level + 1, { lite: LITE });
     this.scene.add(this.world.group);
     this.player = new Player(this.hero, this.world);
     this.scene.add(this.player.cat.root);
@@ -68,6 +69,7 @@ export class GameScene {
     this.moonFound = 0;
     this.idleTime = 0;
     this.meowCd = 0;
+    this.noLookT = 0;
     this.choices = [];
     this.choice = null;
     this.ended = null;
@@ -133,6 +135,7 @@ export class GameScene {
       climbMul: sp,
       airJumps: f >= 5 ? 2 : f >= 1 ? 1 : 0,
       glide: f >= 3,
+      touch: this.input.device === 'touch',
     };
   }
 
@@ -243,6 +246,7 @@ export class GameScene {
   // ── Main update ──
   update(dt, locked) {
     const s = this.input.state;
+    this.input.touch.setVisible(this.input.device === 'touch' && !locked && !this.paused && !this.choice && !this.ended);
     if (locked) return this.render(dt, true);
 
     if (this.ended) {
@@ -283,6 +287,29 @@ export class GameScene {
     this.pitch = clamp(this.pitch + s.mouse.y * MOUSE_SENS + s.look.y * STICK_PITCH * dt, -0.35, 1.2);
 
     const p = this.player;
+
+    // Touch: the camera eases back behind the cat while you run and aren't steering it
+    if (s.touch) {
+      this.noLookT = s.lookTouch ? 0 : this.noLookT + dt;
+      if (this.noLookT > 0.6 && !p.climb && p.speed > 1) {
+        const k = 1.4 * Math.min(1, p.speed / (p.walk || 5));
+        this.yaw = dampAngle(this.yaw, p.facing + Math.PI, k, dt);
+        this.pitch = damp(this.pitch, 0.3, k * 0.5, dt);
+      }
+      // Claw aim assist: turn toward the nearest guard in reach
+      if (s.clawPressed && !p.climb) {
+        let best = null, bd = 3;
+        for (const e of this.enemies.list) {
+          if (e.dead) continue;
+          const d = Math.hypot(e.pos.x - p.pos.x, e.pos.z - p.pos.z);
+          if (d < bd && Math.abs(e.pos.y - p.pos.y) < 1.5) {
+            bd = d;
+            best = e;
+          }
+        }
+        if (best) p.facing = Math.atan2(best.pos.x - p.pos.x, best.pos.z - p.pos.z);
+      }
+    }
     p.update(dt, s, this.yaw, this.mods);
     this.handleEvents();
 
@@ -572,6 +599,7 @@ export class GameScene {
     document.removeEventListener('click', this.onOverlayClick);
     if (document.pointerLockElement) document.exitPointerLock();
     this.input.onDeviceChange = this.prevDeviceCb;
+    this.input.touch.setVisible(false);
     this.hud.hide();
     this.particles.dispose();
     disposeTree(this.scene);

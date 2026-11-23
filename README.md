@@ -48,6 +48,17 @@ Alley City → Ember Crater**.
 | Pause | Start | Esc / P |
 | Menu select / back | A / B | Enter / Esc |
 
+### Phones and tablets
+
+Touch devices get on-screen controls automatically (play in landscape):
+
+- **Left half:** a floating joystick appears under your thumb. Drag past the ring to sprint.
+- **Right half:** drag to turn the camera. It also eases back behind your cat while you run.
+- **Buttons:** Jump, Claws (hold to climb, auto-aims at nearby guards), Meow, Pause.
+- **Menus:** tap a cat to choose, tap again to play. Tap powerup cards to pick.
+
+Phones also get lighter rendering (lower resolution, smaller shadows, less grass).
+
 Debug: `feluna.warp(2)` in the browser console jumps to a level (0-4).
 
 Music and sound effects are synthesized. Browsers only start audio after a click or key
@@ -69,6 +80,8 @@ press (controller buttons don't count), so click once if you don't hear anything
 | `src/birds.js` | Songbirds: perching, flying, befriending, following |
 | `src/particles.js` | Billboard particles (hearts, notes, sparkles, slashes) |
 | `src/audio.js` | Synthesized sound effects + generative music per level |
-| `src/input.js` | Unified keyboard/mouse + Gamepad API input |
+| `src/input.js` | Unified keyboard/mouse, Gamepad API and touch input |
+| `src/touch.js` | On-screen joystick and buttons for phones/tablets |
+| `src/device.js` | Touch-device detection and lite rendering flag |
 | `src/ui3d.js` | Canvas-textured text panels and button glyphs |
 | `src/sky.js` | TSL gradient sky shader |

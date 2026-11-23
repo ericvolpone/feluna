@@ -5,10 +5,12 @@ const $ = (id) => document.getElementById(id);
 const HINTS = {
   keyboard: [['WASD', 'Move'], ['Mouse', 'Look'], ['Space', 'Jump'], ['Shift', 'Sprint'], ['E / Click', 'Claws'], ['F', 'Meow'], ['Esc', 'Pause']],
   gamepad: [['L-Stick', 'Move'], ['R-Stick', 'Look'], ['A', 'Jump'], ['LT', 'Sprint'], ['RT', 'Claws'], ['X', 'Meow'], ['Start', 'Pause']],
+  touch: [],
 };
 const GLYPHS = {
   keyboard: { claw: 'E', meow: 'F', jump: 'Space', move: 'S', confirm: 'Enter', nav: '← →' },
   gamepad: { claw: 'RT', meow: 'X', jump: 'A', move: 'L-Stick', confirm: 'A', nav: 'D-pad' },
+  touch: { claw: 'Claws', meow: 'Meow', jump: 'Jump', move: 'Stick', confirm: 'Tap', nav: 'Tap' },
 };
 const PAD_CLASS = { A: 'pad-a', X: 'pad-x', B: 'pad-b', Y: 'pad-y' };
 
@@ -58,7 +60,7 @@ export class Hud {
   setDevice(device) {
     this.device = device;
     $('hud-hint').innerHTML = HINTS[device].map(([k, v]) => `<span>${this.key(k)}${v}</span>`).join('');
-    $('pause-hint').textContent = device === 'gamepad' ? 'D-pad to choose · A select · B resume' : '↑↓ to choose · Enter select · Esc resume';
+    $('pause-hint').textContent = device === 'gamepad' ? 'D-pad to choose · A select · B resume' : device === 'touch' ? '' : '↑↓ to choose · Enter select · Esc resume';
     this.setContext(this.context);
   }
 
@@ -116,7 +118,7 @@ export class Hud {
         <div class="desc">${it.desc}</div>
         <div class="lv">${'★'.repeat(lv[it.id])}${lv[it.id] ? '' : 'New'}</div>
       </button>`).join('');
-    $('choice-hint').innerHTML = `${this.key(GLYPHS[this.device].nav)}Choose ${this.key(GLYPHS[this.device].confirm)}Take it`;
+    $('choice-hint').innerHTML = this.device === 'touch' ? 'Tap a power to take it' : `${this.key(GLYPHS[this.device].nav)}Choose ${this.key(GLYPHS[this.device].confirm)}Take it`;
     el.classList.remove('hidden');
   }
 
