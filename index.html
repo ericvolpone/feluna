@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Feluna</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="hud" class="hidden">
+      <div class="top">
+        <div id="hud-hearts"></div>
+        <div class="chip" id="hud-hero"></div>
+        <div class="chip small" id="hud-level"></div>
+      </div>
+      <div class="top second">
+        <div class="chip" id="hud-stones"></div>
+        <div class="chip" id="hud-tuna"></div>
+        <div class="chip" id="hud-friends"></div>
+      </div>
+      <div id="hud-banner"></div>
+      <div id="hud-context" class="hidden"></div>
+      <div id="hud-toast"></div>
+      <div id="hud-hint"></div>
+    </div>
+    <div id="pause" class="hidden overlay">
+      <div class="panel">
+        <h2>Paused</h2>
+        <button data-i="0">Resume</button>
+        <button data-i="1">Return to Title</button>
+        <p id="pause-hint"></p>
+      </div>
+    </div>
+    <div id="choice" class="hidden overlay">
+      <div class="panel wide">
+        <p id="choice-reason"></p>
+        <h2>Choose a Power</h2>
+        <div id="choice-cards"></div>
+        <p id="choice-hint"></p>
+      </div>
+    </div>
+    <div id="end" class="hidden overlay">
+      <div class="panel wide">
+        <h2 id="end-title"></h2>
+        <p id="end-sub"></p>
+        <div id="end-stats"></div>
+        <div class="row">
+          <button data-i="0">Try Again</button>
+          <button data-i="1">Title</button>
+        </div>
+      </div>
+    </div>
+    <div id="sound-hint" class="hidden">🔈 Click anywhere to turn on sound</div>
+    <div id="fade"></div>
+    <div id="backend"></div>
+    <div id="loading">Loading Feluna…</div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
