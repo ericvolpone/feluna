@@ -11,6 +11,7 @@ import { sfx, playMusic } from './audio.js';
 import { clamp, damp, dampAngle, disposeTree } from './util.js';
 import { LITE } from './device.js';
 import { Save } from './save.js';
+import { offerFullscreen, fullscreenAction } from './mobile.js';
 
 const MOUSE_SENS = 0.0024;
 const STICK_YAW = 2.8;
@@ -187,6 +188,8 @@ export class GameScene {
     this.lastPauseToggle = now;
     this.paused = on;
     this.pauseSel = 0;
+    document.getElementById('pause-fs').classList.toggle('hidden', !offerFullscreen());
+    this.pauseCount = offerFullscreen() ? 3 : 2;
     if (on) this.hud.setFlock(this.run.friends, ROLES, FLOCK_TIERS[Math.min(this.run.flockTier, FLOCK_TIERS.length - 1)].name);
     this.hud.showPause(on, 0);
     if (on && document.pointerLockElement) document.exitPointerLock();
@@ -195,7 +198,8 @@ export class GameScene {
 
   choosePause(i) {
     if (i === 0) this.setPaused(false);
-    else this.cb.onQuit();
+    else if (i === 1) this.cb.onQuit();
+    else fullscreenAction();
   }
 
   // ── Powerup choices ──
@@ -310,7 +314,7 @@ export class GameScene {
     }
     if (this.paused) {
       if (s.up || s.down) {
-        this.pauseSel = (this.pauseSel + 1) % 2;
+        this.pauseSel = (this.pauseSel + (s.up ? -1 : 1) + this.pauseCount) % this.pauseCount;
         this.hud.showPause(true, this.pauseSel);
       }
       if (s.confirm) this.choosePause(this.pauseSel);

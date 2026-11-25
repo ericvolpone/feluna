@@ -297,7 +297,9 @@ export class Player {
 
     // standing in lava?
     this.inLava = null;
-    if (this.grounded) {
+    // only when standing on the pool's own floor, not on a lily pad or pillar above it
+    const onTerrain = this.pos.y < this.world.groundHeight(this.pos.x, this.pos.z) + 0.15;
+    if (this.grounded && onTerrain) {
       for (const pl of this.world.pools) {
         if (this.pos.y < pl.lavaY + 0.2 && Math.hypot(this.pos.x - pl.x, this.pos.z - pl.z) < pl.r + 0.6) this.inLava = pl;
       }

@@ -87,6 +87,12 @@ Touch devices get on-screen controls automatically (play in landscape):
 
 Phones also get lighter rendering (lower resolution, smaller shadows, less grass).
 
+**Fullscreen:** on Android the game goes fullscreen on the first tap, and a
+⛶ Fullscreen button is on the title screen and in the pause menu. iPhone Safari
+can't make web pages fullscreen, so there the button explains how to
+**Add to Home Screen**; Feluna then opens as a full-screen app (with its own
+saved progress, separate from Safari's).
+
 Debug: `feluna.warp(2)` in the browser console jumps to a level (0-4).
 
 Music and sound effects are synthesized. Browsers only start audio after a click or key

@@ -6,6 +6,7 @@ import { Save } from './save.js';
 import { loadFonts } from './ui3d.js';
 import { playMusic, onAudioState, audioReady } from './audio.js';
 import { IS_TOUCH, LITE } from './device.js';
+import { setupMobile } from './mobile.js';
 
 document.body.classList.toggle('touch', IS_TOUCH);
 
@@ -97,6 +98,10 @@ function resize() {
   game?.resize(aspect);
 }
 addEventListener('resize', resize);
+// iOS Safari's toolbars change the visible area without always firing window resize
+window.visualViewport?.addEventListener('resize', resize);
+addEventListener('orientationchange', () => setTimeout(resize, 300));
+setupMobile();
 resize();
 
 await renderer.compileAsync(menu.scene, menu.camera);

@@ -3,28 +3,18 @@ import { Cat } from './cat.js';
 import { HEROES } from './heroes.js';
 import { LEVELS } from './levels.js';
 import { Save } from './save.js';
+import { CAN_FULLSCREEN, enterFullscreen, isFullscreen, isStandalone } from './mobile.js';
 import { makeSky } from './sky.js';
 import { TextPanel, FONT, frustumHalf, drawPrompts, roundRect, wrapText } from './ui3d.js';
 import { paint, damp, mulberry32, disposeTree } from './util.js';
 
 const HUD_DIST = 2;
 
-/** On phones, go fullscreen and lock landscape when supported (Android Chrome). */
+/** On phones that support it (Android), go fullscreen and lock landscape on the first tap. */
 function requestFullscreenLandscape() {
-  try {
-    const el = document.documentElement;
-    if (document.fullscreenElement || !el.requestFullscreen) return;
-    el.requestFullscreen({ navigationUI: 'hide' })
-      .then(() => screen.orientation?.lock?.('landscape').catch(() => {}))
-      .catch(() => {});
-  } catch { /* not supported (e.g. iPhone Safari) */ }
+  if (CAN_FULLSCREEN && !isFullscreen() && !isStandalone()) enterFullscreen();
 }
 
-/**
- * Title screen and hero select, rendered entirely in the 3D scene:
- * a floating island under a moonlit sky with both cats on pedestals.
- * All text is canvas-textured quads attached to the camera.
- */
 export class MenuScene {
   constructor(input, { onStart }) {
     this.input = input;

@@ -6,6 +6,11 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="theme-color" content="#0b0a22" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Feluna" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icon-180.png" />
+    <link rel="icon" type="image/png" href="/icon-192.png" />
     <title>Feluna</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -37,6 +42,7 @@
         <h2>Paused</h2>
         <button data-i="0">Resume</button>
         <button data-i="1">Return to Title</button>
+        <button data-i="2" id="pause-fs" class="hidden">⛶ Fullscreen</button>
         <div id="pause-flock"></div>
         <p id="pause-hint"></p>
       </div>
@@ -68,6 +74,20 @@
       <button class="tbtn claw" data-btn="claw">Claws</button>
       <button class="tbtn meow" data-btn="meow">Meow</button>
       <button class="tbtn pause" data-btn="pause" aria-label="Pause">❚❚</button>
+    </div>
+    <button id="fs-btn" class="hidden">⛶ Fullscreen</button>
+    <div id="ios-sheet" class="hidden overlay">
+      <div class="panel">
+        <h2>Play fullscreen</h2>
+        <p>iPhone Safari can't make a web page fullscreen, but you can install Feluna as an app:</p>
+        <ol>
+          <li>Tap the <b>Share</b> button <span class="share-icon">⬆︎</span> in Safari</li>
+          <li>Choose <b>Add to Home Screen</b></li>
+          <li>Open <b>Feluna</b> from your home screen</li>
+        </ol>
+        <p class="small">It opens without Safari's bars. Note: the home screen app keeps its own saved progress, separate from Safari's.</p>
+        <button>Got it</button>
+      </div>
     </div>
     <div id="rotate"><div>📱↻<p>Turn your phone sideways to play</p></div></div>
     <div id="sound-hint" class="hidden">🔈 Click anywhere to turn on sound</div>
